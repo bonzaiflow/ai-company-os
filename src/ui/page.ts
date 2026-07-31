@@ -238,6 +238,26 @@ select:focus, input:focus, textarea:focus { outline: none; border-color: var(--m
 .home-dir-section-count {
   font-family: "JetBrains Mono", monospace; font-size: 0.68rem; color: var(--muted);
 }
+.home-pager {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  margin-top: 0; padding: 0.7rem 0.15rem 0; border-top: 0;
+}
+.home-pager[hidden] { display: none !important; }
+.home-pager-meta {
+  font-family: "JetBrains Mono", monospace; font-size: 0.68rem; color: var(--muted);
+}
+.home-pager-actions { display: flex; align-items: center; gap: 0.45rem; }
+.home-pager-btn {
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+  font: inherit; font-size: 0.78rem; font-weight: 600; padding: 0.35rem 0.75rem;
+  border-radius: 999px; cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.home-pager-btn:hover:not(:disabled) {
+  color: var(--text); border-color: color-mix(in srgb, var(--blue) 40%, var(--border));
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+}
+.home-pager-btn:disabled { opacity: 0.35; cursor: default; }
 
 /* Workspace path control */
 .home-workspace {
@@ -583,41 +603,42 @@ select:focus, input:focus, textarea:focus { outline: none; border-color: var(--m
 }
 .plan-chip.new:hover { color: var(--text); }
 
-.skills-strip {
-  display: flex; flex-wrap: wrap; gap: 0.55rem; align-items: stretch;
+.home-skills {
+  display: flex; flex-direction: column; gap: 0;
+  border-top: 1px solid var(--border);
 }
-.skill-chip {
-  display: flex; flex-direction: column; gap: 0.2rem;
-  background: transparent; border: 1px solid var(--border); border-radius: 10px;
-  padding: 0.55rem 0.8rem; cursor: pointer; min-width: 120px; max-width: 200px;
-  transition: border-color 0.15s ease, background 0.15s ease;
+.home-skill {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem 1rem; align-items: center;
+  padding: 0.95rem 0.15rem; cursor: pointer;
+  border-bottom: 1px solid var(--border); background: transparent;
+  transition: background 0.15s ease, padding 0.15s ease;
 }
-.skill-chip:hover {
-  border-color: color-mix(in srgb, var(--blue) 40%, var(--border));
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
+.home-skill:hover {
+  background: color-mix(in srgb, var(--blue) 6%, transparent);
+  padding-left: 0.55rem; padding-right: 0.4rem;
 }
-.skill-chip .name {
-  font-size: 0.82rem; font-weight: 600; letter-spacing: -0.01em;
-  display: flex; align-items: center; gap: 0.35rem; min-width: 0;
-}
-.skill-chip .name > span:not(.src) {
+.home-skill-main { min-width: 0; display: flex; flex-direction: column; gap: 0.2rem; }
+.home-skill-name {
+  font-size: 1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.skill-chip .meta {
-  font-size: 0.65rem; color: var(--muted); font-family: "JetBrains Mono", monospace;
+.home-skill-meta {
+  font-family: "JetBrains Mono", monospace; font-size: 0.68rem; color: var(--muted);
 }
-.skill-chip.more {
-  align-items: center; justify-content: center; border-style: dashed;
-  color: var(--muted); font-size: 0.8rem; min-width: 110px; max-width: 140px;
+.home-skill.more {
+  display: flex; align-items: center; justify-content: flex-start;
+  color: var(--blue-bright); font-size: 0.9rem; font-weight: 600;
+  border-bottom: 1px solid var(--border);
 }
-.skill-chip.more:hover { color: var(--text); }
+.home-skill.more:hover { color: var(--text); }
 
 main { display: none; height: 100vh; }
 main.on { display: grid; }
-body.footer-on main { height: calc(100vh - 44px); }
+body.footer-on main { height: calc(100vh - 40px); }
 #viewHome, #viewSkills, #viewSkill { grid-template-columns: 1fr; overflow-y: auto; }
-#viewCompany { grid-template-columns: 340px minmax(0, 1fr) 0fr; transition: grid-template-columns 0.28s ease; }
-#viewCompany.agent-open { grid-template-columns: 340px minmax(0, 1fr) 420px; }
+#viewCompany { grid-template-columns: 300px minmax(0, 1fr) 0fr; transition: grid-template-columns 0.28s ease; }
+#viewCompany.agent-open { grid-template-columns: 300px minmax(0, 1fr) 400px; }
 #viewCompany .agent-sidebar {
   overflow: hidden; min-width: 0; opacity: 0; pointer-events: none;
   transition: opacity 0.2s ease; border-left-color: transparent;
@@ -625,15 +646,16 @@ body.footer-on main { height: calc(100vh - 44px); }
 #viewCompany.agent-open .agent-sidebar {
   opacity: 1; pointer-events: auto; border-left-color: var(--border);
 }
-#viewPlan { grid-template-columns: 1fr 440px; }
-#viewPlan > section:not(.sidebar) {
-  padding-left: clamp(2rem, 6vw, 5rem);
-  padding-right: clamp(2rem, 6vw, 5rem);
+#viewPlan { grid-template-columns: 1fr 420px; }
+#viewPlan > .plan-stage {
+  padding: 1.5rem clamp(1.5rem, 5vw, 3.5rem) 2rem;
+  background:
+    radial-gradient(ellipse 55% 40% at 80% 0%, var(--glow), transparent 70%);
 }
-#viewPlan > section:not(.sidebar) .page-head,
-#viewPlan > section:not(.sidebar) #planDoc,
-#viewPlan > section:not(.sidebar) #planBar {
-  max-width: 52rem;
+#viewPlan > .plan-stage .plan-mast,
+#viewPlan > .plan-stage #planDoc,
+#viewPlan > .plan-stage #planBar {
+  max-width: 48rem;
   margin-left: auto;
   margin-right: auto;
   width: 100%;
@@ -653,20 +675,96 @@ section.sidebar { background: var(--surface); padding: 0; display: flex; flex-di
 .page-head-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
 .page-head-main { min-width: 0; flex: 1; }
 
-#viewCompany .page-head-row {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.85rem;
+/* Company stage */
+#viewCompany > .co-stage {
+  padding: 1.35rem 1.75rem 2rem;
+  background:
+    radial-gradient(ellipse 50% 35% at 90% -5%, var(--glow), transparent 70%);
 }
-#viewCompany .page-head-main { min-width: 0; width: 100%; }
-#viewCompany .page-head-row .bars {
-  flex-wrap: wrap;
-  width: 100%;
-  justify-content: flex-start;
+.co-mast { margin-bottom: 1.75rem; }
+.co-mast .backlink { margin-bottom: 0.65rem; }
+.co-mast-row {
+  display: flex; flex-wrap: wrap; justify-content: space-between;
+  align-items: flex-start; gap: 1rem 1.5rem;
+}
+.co-mast-main { min-width: 0; flex: 1; }
+.co-brand {
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--blue-bright); margin-bottom: 0.4rem;
 }
 #viewCompany .page-title {
-  overflow-wrap: anywhere;
+  font-size: clamp(1.45rem, 2.4vw, 1.85rem); overflow-wrap: anywhere;
+  letter-spacing: -0.03em;
+}
+#viewCompany .subtitle { max-width: 40rem; font-size: 0.92rem; line-height: 1.45; }
+#viewCompany .bars {
+  flex-wrap: wrap; align-items: flex-end; gap: 0.55rem; justify-content: flex-end;
+}
+.co-org-label {
+  font-family: "JetBrains Mono", monospace; font-size: 0.68rem; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+  margin-bottom: 0.85rem;
+}
+.co-tools { position: relative; }
+.co-tools-toggle {
+  font-size: 0.7rem; padding: 0.24rem 0.75rem; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--muted); margin-top: 0.15rem;
+}
+.co-tools-toggle:hover, .co-tools-toggle[aria-expanded="true"] {
+  color: var(--text); border-color: var(--muted);
+}
+.co-tools-menu {
+  position: absolute; right: 0; top: calc(100% + 0.35rem); z-index: 20;
+  display: flex; flex-direction: column; gap: 0.35rem; min-width: 9.5rem;
+  padding: 0.55rem; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--surface); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+}
+.co-tools-menu[hidden] { display: none !important; }
+.co-tools-menu .grant-btn {
+  margin: 0; width: 100%; text-align: left; border-radius: 8px;
+}
+.co-tools-danger { color: #f87171 !important; border-color: rgba(248, 113, 113, 0.35) !important; }
+
+/* Plan studio */
+.plan-mast { margin-bottom: 1.75rem; }
+.plan-brand, .skills-brand {
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--blue-bright); margin: 0.35rem 0 0.45rem;
+}
+.plan-mast .page-title { font-size: clamp(1.45rem, 2.4vw, 1.85rem); letter-spacing: -0.03em; }
+.plan-empty {
+  padding: 2.5rem 0 1rem; border-top: 1px solid var(--border);
+}
+.plan-empty-title {
+  font-size: 1.15rem; font-weight: 600; letter-spacing: -0.02em; color: var(--text);
+}
+.plan-empty-body {
+  margin-top: 0.55rem; color: var(--muted); font-size: 0.92rem; line-height: 1.5; max-width: 28rem;
+}
+
+/* Skills shelf */
+.skills-stage {
+  max-width: 1080px; margin: 0 auto; width: 100%;
+  padding: 1.75rem clamp(1.25rem, 3.5vw, 2.5rem) 3.5rem !important;
+  background:
+    radial-gradient(ellipse 55% 40% at 70% 0%, var(--glow), transparent 70%);
+}
+.skills-mast { margin-bottom: 2.25rem; }
+.skills-mast-compact { margin-bottom: 1.25rem; }
+.skills-mast-row {
+  display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+  gap: 1rem 1.5rem;
+}
+.skills-mast-main { min-width: 0; flex: 1; }
+.skills-mast-actions {
+  display: flex; align-items: center; gap: 0.65rem; flex-shrink: 0; padding-top: 0.35rem;
+}
+.skills-title {
+  font-size: clamp(1.85rem, 3.6vw, 2.55rem); font-weight: 700;
+  letter-spacing: -0.045em; line-height: 1.05; color: var(--text);
+}
+.skills-lead {
+  margin-top: 0.75rem; color: var(--muted); font-size: 1rem; line-height: 1.5; max-width: 36rem;
 }
 h2.sec {
   font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
@@ -790,27 +888,29 @@ h2.sec:first-child { margin-top: 0; }
 .pill.failed  { background: rgba(248, 113, 113, 0.15); color: #f87171; }
 .pill.neutral { background: rgba(139, 156, 179, 0.15); color: var(--muted); }
 
-.org { display: flex; flex-direction: column; align-items: center; padding-top: 0.5rem; }
+.org { display: flex; flex-direction: column; align-items: center; padding: 0.75rem 0 1.5rem; }
 .sub { display: flex; flex-direction: column; align-items: center; position: relative; }
-.down { width: 1px; height: 16px; background: var(--line); margin-top: -7px; }
+.down { width: 1px; height: 18px; background: color-mix(in srgb, var(--blue-bright) 35%, var(--border)); margin-top: -4px; }
 .kids { display: flex; justify-content: center; align-items: flex-start; }
-.kids > .sub { padding-top: 16px; }
-/* full connectors: rail across all siblings + drop into each card */
-.kids > .sub::before { content: ""; position: absolute; top: 0; left: 50%; width: 1px; height: 16px; background: var(--line); }
-.kids > .sub::after { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: var(--line); }
+.kids > .sub { padding-top: 18px; }
+.kids > .sub::before { content: ""; position: absolute; top: 0; left: 50%; width: 1px; height: 18px; background: color-mix(in srgb, var(--blue-bright) 35%, var(--border)); }
+.kids > .sub::after { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: color-mix(in srgb, var(--blue-bright) 35%, var(--border)); }
 .kids > .sub:first-child::after { left: 50%; }
 .kids > .sub:last-child::after { right: 50%; }
 .kids > .sub:only-child::after { display: none; }
 .org-card {
-  position: relative; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 12px; min-width: 172px; max-width: 210px; overflow: hidden;
-  margin: 7px 9px; cursor: pointer; text-align: left;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  position: relative; background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--border); border-radius: 14px;
+  min-width: 168px; max-width: 200px; overflow: hidden;
+  margin: 6px 8px; cursor: pointer; text-align: left;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  box-shadow: 0 0 0 0 transparent;
 }
 .org-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: var(--surface);
 }
 .org-card.sel {
   border-color: var(--accent);
@@ -818,22 +918,23 @@ h2.sec:first-child { margin-top: 0; }
 }
 .org-card.active {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 18px color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 22px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 .org-card.sel.active {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 22px color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 26px color-mix(in srgb, var(--accent) 24%, transparent);
 }
-.org-accent { height: 3px; background: var(--accent); }
-.org-body { padding: 0.75rem 0.9rem 0.85rem; }
+.org-accent { height: 2px; background: linear-gradient(90deg, var(--accent), transparent); }
+.org-body { padding: 0.8rem 0.9rem 0.9rem; }
 .org-rank {
-  display: inline-block; font-size: 0.62rem; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.06em; padding: 0.2em 0.5em; border-radius: 4px; margin-bottom: 0.45rem;
+  display: inline-block; font-family: "JetBrains Mono", monospace;
+  font-size: 0.6rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.1em; padding: 0.18em 0.45em; border-radius: 4px; margin-bottom: 0.45rem;
 }
 .org-rank.chief   { background: rgba(234, 179, 8, 0.15);  color: #fbbf24; }
 .org-rank.manager { background: rgba(217, 70, 239, 0.15); color: #e879f9; }
 .org-rank.worker  { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
-.org-name { font-size: 0.98rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; }
-.org-role { font-family: "JetBrains Mono", monospace; font-size: 0.68rem; color: var(--muted); margin-top: 0.25rem; }
+.org-name { font-size: 1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+.org-role { font-family: "JetBrains Mono", monospace; font-size: 0.68rem; color: var(--muted); margin-top: 0.3rem; }
 .org-tools {
   display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.55rem;
   padding-top: 0.5rem; border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
@@ -1080,10 +1181,12 @@ pre.doc.json .jb { color: #e879f9; }
 .btn.danger:hover:not(:disabled) { border-color: #f87171; background: rgba(248, 113, 113, 0.08); }
 
 .planbar {
-  display: flex; gap: 0.6rem; align-items: center; margin-top: 1.25rem;
-  padding: 0.85rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-  flex-wrap: wrap;
+  display: flex; gap: 0.65rem; align-items: center; margin-top: 1.75rem;
+  padding: 0.95rem 1.1rem; background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--border); border-radius: 14px; flex-wrap: wrap;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
 }
+.planbar .btn { border-radius: 999px; padding: 0.55rem 1.15rem; }
 .plan-budget-display {
   font-family: "JetBrains Mono", monospace; font-size: 0.85rem; color: var(--text);
   cursor: pointer; padding: 0.2rem 0; border-bottom: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
@@ -1135,18 +1238,35 @@ pre.doc.json .jb { color: #e879f9; }
 }
 .card.new:hover { color: var(--text); transform: none; box-shadow: none; }
 
-footer {
-  position: fixed; bottom: 0; left: 0; right: 0; height: 44px;
-  display: none; align-items: center; gap: 1.1rem; padding: 0 1.5rem;
-  background: var(--surface); border-top: 1px solid var(--border); font-size: 0.78rem;
+footer.status-rail {
+  position: fixed; bottom: 0; left: 0; right: 0; height: 40px;
+  display: none; align-items: center; gap: 0.85rem; padding: 0 1.25rem;
+  background: color-mix(in srgb, var(--bg) 72%, var(--surface));
+  border-top: 1px solid var(--border); font-size: 0.72rem;
+  backdrop-filter: blur(10px);
 }
-body.footer-on footer { display: flex; }
-footer .sw { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); cursor: pointer; user-select: none; }
-footer .track2 { width: 32px; height: 18px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); position: relative; }
-footer .knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 7px; background: var(--muted); transition: left 0.15s; }
-footer .sw.on .knob { left: 16px; background: #4ade80; }
+body.footer-on footer.status-rail { display: flex; }
+footer .sw {
+  display: flex; align-items: center; gap: 0.45rem; color: var(--muted);
+  cursor: pointer; user-select: none; flex-shrink: 0;
+}
+footer .status-rail-label {
+  font-family: "JetBrains Mono", monospace; font-size: 0.62rem; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+footer .track2 { width: 28px; height: 16px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); position: relative; }
+footer .knob { position: absolute; top: 1px; left: 2px; width: 12px; height: 12px; border-radius: 7px; background: var(--muted); transition: left 0.15s; }
+footer .sw.on .knob { left: 13px; background: #4ade80; }
 footer .sw.on { color: var(--text); }
-#liveStrip { flex: 1; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: "JetBrains Mono", monospace; font-size: 0.7rem; }
+footer .sw.on .status-rail-label { color: #4ade80; }
+#liveStrip {
+  flex: 1; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-family: "JetBrains Mono", monospace; font-size: 0.68rem; min-width: 0;
+}
+#liveStrip:empty::before {
+  content: "Models & live activity";
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+}
 #liveStrip .hot { color: #fbbf24; }
 #toastHost {
   position: fixed; right: 1rem; bottom: 3.25rem; z-index: 10000;
@@ -1178,19 +1298,24 @@ footer .sw.on { color: var(--text); }
 }
 footer .footer-settings {
   display: flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; padding: 0; flex-shrink: 0;
-  background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--muted);
+  width: 26px; height: 26px; padding: 0; flex-shrink: 0;
+  background: none; border: 1px solid transparent; border-radius: 999px; color: var(--muted);
 }
-footer .footer-settings:hover { color: var(--text); border-color: var(--muted); }
+footer .footer-settings:hover {
+  color: var(--text); border-color: var(--border);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
 footer .footer-settings svg { display: block; }
 .theme-btn {
   position: fixed; left: 12px; bottom: 12px; right: auto; top: auto; z-index: 80;
-  width: 34px; height: 34px; border-radius: 999px;
-  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  width: 32px; height: 32px; border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--muted);
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 0.9rem; cursor: grab; touch-action: none; user-select: none;
-  transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
-  box-shadow: 0 4px 16px rgba(20, 30, 50, 0.08);
+  font-size: 0.85rem; cursor: grab; touch-action: none; user-select: none;
+  transition: color 0.15s, border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
 }
 .theme-btn:hover { color: var(--text); border-color: var(--muted); }
 .theme-btn.dragging {
@@ -1198,7 +1323,7 @@ footer .footer-settings svg { display: block; }
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   transition: none;
 }
-body.footer-on .theme-btn:not(.theme-pos) { bottom: 56px; }
+body.footer-on .theme-btn:not(.theme-pos) { bottom: 52px; }
 .modal.roles { width: min(520px, 100%); }
 .role-settings { display: flex; flex-direction: column; gap: 0.85rem; }
 .role-row {
@@ -1213,20 +1338,21 @@ body.footer-on .theme-btn:not(.theme-pos) { bottom: 56px; }
 .toolbar { display: flex; gap: 0.5rem; padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--border); }
 .toolbar .btn { flex: 1; font-size: 0.78rem; padding: 0.42rem 0.5rem; }
 
-/* Company sidebar runtime controls */
+/* Conductor — runtime controls */
+.conductor-head .side-title { font-size: 1.05rem; }
 .runtime-bar {
-  display: flex; flex-direction: column; gap: 0.55rem;
-  padding: 0.65rem 0.85rem 0.7rem;
+  display: flex; flex-direction: column; gap: 0.65rem;
+  padding: 0.75rem 0.9rem 0.8rem;
   border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 65%, var(--surface));
+  background: color-mix(in srgb, var(--bg) 55%, var(--surface));
 }
 .runtime-run {
-  display: flex; gap: 2px; padding: 3px;
-  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  display: flex; gap: 3px; padding: 3px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 999px;
 }
 .runtime-run-btn {
   flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
-  border: none; border-radius: 8px; padding: 0.48rem 0.45rem;
+  border: none; border-radius: 999px; padding: 0.52rem 0.5rem;
   background: transparent; color: var(--muted);
   font: inherit; font-size: 0.78rem; font-weight: 600; letter-spacing: -0.01em;
   cursor: pointer;
@@ -1238,7 +1364,7 @@ body.footer-on .theme-btn:not(.theme-pos) { bottom: 56px; }
 }
 .runtime-run-btn.primary {
   background: var(--blue); color: #fff;
-  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.32);
+  box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.35);
 }
 .runtime-run-btn.primary:hover:not(:disabled) { background: #1d4ed8; }
 .runtime-run-btn.busy {
@@ -1257,12 +1383,14 @@ body.footer-on .theme-btn:not(.theme-pos) { bottom: 56px; }
 .runtime-run-ico { font-size: 0.68rem; line-height: 1; opacity: 0.9; }
 
 .runtime-status {
-  display: flex; align-items: center; gap: 0.4rem;
-  min-height: 1rem; padding: 0 0.2rem;
+  display: flex; align-items: center; gap: 0.45rem;
+  min-height: 1.1rem; padding: 0.15rem 0.35rem;
   font-family: "JetBrains Mono", monospace; font-size: 0.68rem; color: var(--muted);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
 }
 .runtime-status-dot {
-  width: 0.4rem; height: 0.4rem; border-radius: 50%; flex-shrink: 0;
+  width: 0.45rem; height: 0.45rem; border-radius: 50%; flex-shrink: 0;
   background: var(--line);
 }
 .runtime-status.ready .runtime-status-dot { background: #4ade80; }
@@ -1277,34 +1405,34 @@ body.footer-on .theme-btn:not(.theme-pos) { bottom: 56px; }
 .runtime-status.paused { color: #fca5a5; }
 @keyframes runtime-dot-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.4); }
-  50% { box-shadow: 0 0 0 4px rgba(96, 165, 250, 0); }
+  50% { box-shadow: 0 0 0 5px rgba(96, 165, 250, 0); }
 }
 
 .runtime-tools {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.3rem;
 }
 .runtime-tool {
   display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 0.18rem; min-height: 2.55rem; padding: 0.35rem 0.2rem;
-  border: 1px solid var(--border); border-radius: 9px;
-  background: var(--surface); color: var(--muted);
-  font: inherit; font-size: 0.62rem; font-weight: 600; letter-spacing: 0.04em;
+  gap: 0.15rem; min-height: 2.35rem; padding: 0.3rem 0.15rem;
+  border: 1px solid transparent; border-radius: 10px;
+  background: transparent; color: var(--muted);
+  font: inherit; font-size: 0.6rem; font-weight: 600; letter-spacing: 0.06em;
   text-transform: uppercase; cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, opacity 0.15s;
 }
 .runtime-tool:hover:not(:disabled) {
-  color: var(--text); border-color: color-mix(in srgb, var(--muted) 55%, var(--border));
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+  color: var(--text); border-color: var(--border);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  transform: none; box-shadow: none;
 }
 .runtime-tool.alert {
-  color: #f87171; border-color: rgba(248, 113, 113, 0.4);
-  background: color-mix(in srgb, #f87171 8%, var(--surface));
+  color: #f87171; border-color: rgba(248, 113, 113, 0.35);
+  background: color-mix(in srgb, #f87171 8%, transparent);
 }
 .runtime-tool.danger { color: color-mix(in srgb, #f87171 70%, var(--muted)); }
 .runtime-tool.danger:hover:not(:disabled) {
-  color: #f87171; border-color: rgba(248, 113, 113, 0.45);
-  background: color-mix(in srgb, #f87171 8%, var(--surface));
+  color: #f87171; border-color: rgba(248, 113, 113, 0.4);
+  background: color-mix(in srgb, #f87171 8%, transparent);
 }
 .runtime-tool:disabled {
   opacity: 0.34; cursor: default; transform: none; box-shadow: none;
@@ -1669,57 +1797,65 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
 
 .skillrow { display: flex; flex-direction: column; gap: 1.25rem; width: 100%; }
 .skilllist { width: 100%; }
-#skillItems {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.85rem;
-}
-@media (max-width: 980px) {
-  #skillItems { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 640px) {
-  #skillItems { grid-template-columns: 1fr; }
+#skillItems.skills-shelf,
+.skills-shelf {
+  display: flex; flex-direction: column; gap: 0;
+  border-top: 1px solid var(--border);
 }
 .skillitem {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-  padding: 0.95rem 1.1rem 1rem; cursor: pointer; min-width: 0; height: 100%;
-  display: flex; flex-direction: column; gap: 0.55rem; text-align: left;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-  border-left: 3px solid color-mix(in srgb, var(--blue) 55%, var(--border));
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.35rem 1.25rem;
+  align-items: start; background: transparent; border: 0;
+  border-bottom: 1px solid var(--border); border-radius: 0; border-left: 0;
+  padding: 1.1rem 0.15rem; cursor: pointer; min-width: 0; height: auto;
+  text-align: left; transition: background 0.15s ease, padding 0.15s ease;
 }
 .skillitem:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-  border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
-  border-left-color: var(--blue);
+  transform: none; box-shadow: none;
+  background: color-mix(in srgb, var(--blue) 6%, transparent);
+  border-color: var(--border); padding-left: 0.55rem; padding-right: 0.4rem;
 }
 .skillitem.on {
-  border-color: color-mix(in srgb, var(--blue) 45%, var(--border));
-  border-left-color: var(--blue);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--blue) 25%, transparent);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+  box-shadow: none;
 }
 .skillitem.action {
-  align-items: center; justify-content: center; text-align: center;
-  border: 1px dashed var(--border); background: transparent;
-  color: var(--muted); font-size: 0.85rem; min-height: 7.5rem;
+  display: flex; align-items: center; justify-content: flex-start;
+  text-align: left; border-style: solid; background: transparent;
+  color: var(--blue-bright); font-size: 0.9rem; font-weight: 600; min-height: 0;
+  padding: 1.05rem 0.15rem;
 }
 .skillitem.action:hover {
   color: var(--text); transform: none; box-shadow: none;
-  border-color: var(--muted);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--blue) 6%, transparent);
+  padding-left: 0.55rem;
 }
-.skillitem.action label { cursor: pointer; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-.skillitem-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; }
-.skillitem-name { font-size: 1.02rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.25; }
+.skillitem.action label {
+  cursor: pointer; width: 100%; height: auto;
+  display: flex; align-items: center; justify-content: flex-start;
+}
+.skillitem-top {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem;
+  grid-column: 1;
+}
+.skillitem-name { font-size: 1.08rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; }
 .skillitem-slug {
-  font-family: "JetBrains Mono", monospace; font-size: 0.65rem; color: var(--muted); margin-top: -0.2rem;
+  font-family: "JetBrains Mono", monospace; font-size: 0.68rem; color: var(--muted); margin-top: 0;
+  grid-column: 1;
 }
 .skillitem-desc {
-  color: var(--muted); font-size: 0.8rem; line-height: 1.4; flex: 1;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  color: var(--muted); font-size: 0.88rem; line-height: 1.45; flex: none;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  max-width: 40rem; grid-column: 1;
 }
 .skillitem-meta {
-  display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; margin-top: auto;
-  font-size: 0.65rem; color: var(--muted); font-family: "JetBrains Mono", monospace;
+  display: flex; flex-wrap: wrap; gap: 0.35rem 0.75rem; align-items: center; margin-top: 0.15rem;
+  font-size: 0.68rem; color: var(--muted); font-family: "JetBrains Mono", monospace;
+  grid-column: 1;
+}
+.skillitem > .src {
+  grid-column: 2; grid-row: 1; align-self: center;
 }
 .skillitem-meta .chip {
   opacity: 1; font-size: 0.62rem; padding: 0.12rem 0.4rem;
@@ -1905,7 +2041,7 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
           <h2 class="sec">Skills ready</h2>
           <button type="button" class="sec-link" onclick="nav('skills')">Open library →</button>
         </div>
-        <div class="skills-strip" id="skillCardsWelcome"></div>
+        <div class="home-skills" id="skillCardsWelcome"></div>
       </div>
     </div>
   </section>
@@ -1938,6 +2074,13 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
           <div class="home-dir-section-count" id="homeCompanyCount"></div>
         </div>
         <div class="home-portfolio" id="companyRows"></div>
+        <div class="home-pager" id="homeCompanyPager" hidden>
+          <div class="home-pager-meta" id="homeCompanyPagerMeta"></div>
+          <div class="home-pager-actions">
+            <button type="button" class="home-pager-btn" id="homeCompanyPrev" onclick="homePortfolioPageDelta(-1)">Previous</button>
+            <button type="button" class="home-pager-btn" id="homeCompanyNext" onclick="homePortfolioPageDelta(1)">Next</button>
+          </div>
+        </div>
       </div>
 
       <div class="home-dir-section" id="plansBlock">
@@ -1953,7 +2096,7 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
           <div class="home-dir-section-label">Skills</div>
           <button type="button" class="sec-link" onclick="nav('skills')">Open library →</button>
         </div>
-        <div class="skills-strip" id="skillCards"></div>
+        <div class="home-skills" id="skillCards"></div>
       </div>
     </div>
   </section>
@@ -1961,10 +2104,10 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
 
 <main id="viewCompany" class="agent-open">
   <section class="sidebar">
-    <div class="side-head">
+    <div class="side-head conductor-head">
       <div class="accentbar"></div>
       <div class="side-head-body">
-        <div class="eyebrow">Runtime</div>
+        <div class="eyebrow">Conductor</div>
         <div class="side-title">Task queue</div>
       </div>
     </div>
@@ -2004,26 +2147,32 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
     </div>
     <div class="side-inner"><div id="tasks"></div></div>
   </section>
-  <section>
-    <div class="page-head">
-      <div class="page-head-row">
-        <div class="page-head-main">
-          <button type="button" class="backlink" onclick="nav('home')">← Home</button>
-          <div class="eyebrow">AI Company OS</div>
+  <section class="co-stage">
+    <div class="co-mast">
+      <button type="button" class="backlink" onclick="nav('home')">← Home</button>
+      <div class="co-mast-row">
+        <div class="co-mast-main">
+          <div class="co-brand">AI Company OS</div>
           <div class="page-title" id="coName"></div>
           <div class="subtitle" id="coGoal"></div>
         </div>
         <div class="bars" id="bars">
           <div class="bar" id="tokWrap">Tokens remaining <span class="num" id="tokTxt"></span><div class="track"><div class="fill" id="tokBar"></div></div></div>
           <button class="grant-btn" onclick="grantTokens()">＋ Grant</button>
-          <button class="grant-btn" id="dataBtn" onclick="openDbBrowser()">🗄 Data</button>
-          <button class="grant-btn" id="apprBtn" onclick="openApprovals()">✓ Approvals</button>
-          <button class="grant-btn" onclick="openCheckins()">✉ Check-ins</button>
-          <button class="grant-btn" onclick="openSchedule()">∞ Schedule</button>
-          <button class="grant-btn" onclick="deleteCurrentCompany()" title="Delete this company" style="color:#f87171;border-color:rgba(248,113,113,0.35)">Delete</button>
+          <div class="co-tools">
+            <button type="button" class="co-tools-toggle" id="coToolsToggle" onclick="toggleCoTools(event)" aria-expanded="false" aria-controls="coToolsMenu">More</button>
+            <div class="co-tools-menu" id="coToolsMenu" hidden>
+              <button class="grant-btn" id="dataBtn" onclick="openDbBrowser()">Data</button>
+              <button class="grant-btn" id="apprBtn" onclick="openApprovals()">Approvals</button>
+              <button class="grant-btn" onclick="openCheckins()">Check-ins</button>
+              <button class="grant-btn" onclick="openSchedule()">Schedule</button>
+              <button class="grant-btn co-tools-danger" onclick="deleteCurrentCompany()" title="Delete this company">Delete</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
+    <div class="co-org-label">Organization</div>
     <div class="org" id="org"></div>
   </section>
   <section class="sidebar agent-sidebar" id="agentSidebar">
@@ -2043,14 +2192,19 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
 </main>
 
 <main id="viewPlan">
-  <section>
-    <div class="page-head">
+  <section class="plan-stage">
+    <div class="plan-mast">
       <button type="button" class="backlink" onclick="nav('home')">← Home</button>
-      <div class="eyebrow">Plan</div>
+      <div class="plan-brand">AI Company OS</div>
       <div class="page-title" id="planTitle">New plan</div>
-      <div class="subtitle">Refine in chat, then launch a company with the proposed agent roster.</div>
+      <div class="subtitle">Describe the goal in chat. A roster drafts here — then launch it to disk.</div>
     </div>
-    <div id="planDoc"><div class="muted">No plan yet — describe your goal in the chat.</div></div>
+    <div id="planDoc">
+      <div class="plan-empty">
+        <div class="plan-empty-title">Start in the conversation</div>
+        <div class="plan-empty-body">Tell the planner what you want accomplished. The living plan and org preview will appear here.</div>
+      </div>
+    </div>
     <div class="planbar" id="planBar" style="display:none">
       <span class="plan-budget-display" id="planBudgetDisplay" tabindex="0" role="button" title="Click to edit token budget"></span>
       <input type="number" id="planBudgetTokens" class="plan-budget-input" min="1" step="1" style="display:none" aria-label="Token budget">
@@ -2065,7 +2219,7 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
     <div class="side-head">
       <div class="accentbar"></div>
       <div class="side-head-body">
-        <div class="eyebrow">Conversation</div>
+        <div class="eyebrow">Studio</div>
         <div class="side-title">Plan <select id="providerSel" style="margin-left:0.5rem;font-size:0.72rem"></select></div>
       </div>
     </div>
@@ -2092,26 +2246,46 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
 </main>
 
 <main id="viewSkills">
-  <section>
-    <div class="page-head">
+  <section class="skills-stage">
+    <div class="skills-mast">
       <button type="button" class="backlink" onclick="nav('home')">← Home</button>
-      <div class="eyebrow">Library</div>
-      <div class="page-title">Skills</div>
-      <div class="subtitle">A skill is a folder with a SKILL.md plus optional scripts, templates, and assets. Workspace skills override bundled ones; the whole folder is copied into companies.</div>
+      <div class="skills-mast-row">
+        <div class="skills-mast-main">
+          <div class="skills-brand">AI Company OS</div>
+          <h1 class="skills-title">Skills</h1>
+          <p class="skills-lead">Folders of instructions agents can use. Workspace skills override bundled ones and copy into companies at launch.</p>
+        </div>
+        <div class="skills-mast-actions">
+          <input type="file" id="skillUpload" accept=".zip,.md" style="display:none" onchange="onSkillUpload(event)">
+          <button type="button" class="home-link" onclick="document.getElementById('skillUpload').click()">Upload</button>
+          <button type="button" class="btn" onclick="openSkill(null)">New skill</button>
+        </div>
+      </div>
     </div>
     <div class="skillrow">
       <div class="skilllist">
-        <div id="skillItems"></div>
+        <div class="home-dir-section-head" style="margin-bottom:0.85rem">
+          <div class="home-dir-section-label">Library</div>
+          <div class="home-dir-section-count" id="skillsLibraryCount"></div>
+        </div>
+        <div id="skillItems" class="skills-shelf"></div>
+        <div class="home-pager" id="skillsPager" hidden>
+          <div class="home-pager-meta" id="skillsPagerMeta"></div>
+          <div class="home-pager-actions">
+            <button type="button" class="home-pager-btn" id="skillsPrev" onclick="skillsPageDelta(-1)">Previous</button>
+            <button type="button" class="home-pager-btn" id="skillsNext" onclick="skillsPageDelta(1)">Next</button>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 </main>
 
 <main id="viewSkill">
-  <section>
-    <div class="page-head">
+  <section class="skills-stage">
+    <div class="skills-mast skills-mast-compact">
       <button type="button" class="backlink" onclick="nav('skills')">← Skills</button>
-      <div class="eyebrow">Library · Skill</div>
+      <div class="skills-brand">AI Company OS</div>
       <div class="page-title" id="skillTitle">Skill</div>
       <div class="skill-page-meta" id="skillMeta"></div>
     </div>
@@ -2147,10 +2321,10 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
 
 <button type="button" class="theme-btn" id="themeBtn" aria-label="Toggle theme" title="Toggle theme (drag to move)">☾</button>
 
-<footer>
-  <div class="sw" id="liveSw" onclick="toggleLive()">
+<footer class="status-rail">
+  <div class="sw" id="liveSw" onclick="toggleLive()" title="Show live tool activity on the org chart">
     <div class="track2"><div class="knob"></div></div>
-    Live tools
+    <span class="status-rail-label">Live</span>
   </div>
   <div id="liveStrip"></div>
   <button type="button" class="footer-settings" id="roleSettingsBtn" onclick="openRoleSettings()" aria-label="Model settings" title="Model settings">
@@ -2177,6 +2351,26 @@ function markDataFresh(on) {
     btn.title = '';
   }
 }
+
+function toggleCoTools(e) {
+  if (e) e.stopPropagation();
+  var menu = document.getElementById('coToolsMenu');
+  var toggle = document.getElementById('coToolsToggle');
+  if (!menu || !toggle) return;
+  var open = menu.hasAttribute('hidden');
+  if (open) menu.removeAttribute('hidden');
+  else menu.setAttribute('hidden', '');
+  toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+document.addEventListener('click', function (e) {
+  var menu = document.getElementById('coToolsMenu');
+  var toggle = document.getElementById('coToolsToggle');
+  if (!menu || !toggle || menu.hasAttribute('hidden')) return;
+  if (menu.contains(e.target) || toggle.contains(e.target)) return;
+  menu.setAttribute('hidden', '');
+  toggle.setAttribute('aria-expanded', 'false');
+});
 
 function noteDataSig(sig) {
   if (sig == null || !companySlug) return;
@@ -2828,6 +3022,56 @@ function homeMetric(label, value, cls) {
   return m;
 }
 
+var HOME_PORTFOLIO_PAGE_SIZE = 3;
+var homePortfolioPage = 0;
+var homePortfolioList = [];
+
+function renderHomePortfolio() {
+  var box = document.getElementById('companyRows');
+  var pager = document.getElementById('homeCompanyPager');
+  var meta = document.getElementById('homeCompanyPagerMeta');
+  var prev = document.getElementById('homeCompanyPrev');
+  var next = document.getElementById('homeCompanyNext');
+  var coCount = document.getElementById('homeCompanyCount');
+  if (!box) return;
+
+  var total = homePortfolioList.length;
+  var pages = Math.max(1, Math.ceil(total / HOME_PORTFOLIO_PAGE_SIZE));
+  if (homePortfolioPage >= pages) homePortfolioPage = pages - 1;
+  if (homePortfolioPage < 0) homePortfolioPage = 0;
+
+  var start = homePortfolioPage * HOME_PORTFOLIO_PAGE_SIZE;
+  var slice = homePortfolioList.slice(start, start + HOME_PORTFOLIO_PAGE_SIZE);
+  box.innerHTML = '';
+  slice.forEach(function (co) {
+    box.appendChild(renderCompanyRow(co));
+  });
+
+  if (coCount) {
+    coCount.textContent = total
+      ? total + ' compan' + (total === 1 ? 'y' : 'ies')
+      : '';
+  }
+
+  if (pager) {
+    if (total <= HOME_PORTFOLIO_PAGE_SIZE) {
+      pager.hidden = true;
+    } else {
+      pager.hidden = false;
+      var from = start + 1;
+      var to = start + slice.length;
+      if (meta) meta.textContent = from + '\\u2013' + to + ' of ' + total;
+      if (prev) prev.disabled = homePortfolioPage <= 0;
+      if (next) next.disabled = homePortfolioPage >= pages - 1;
+    }
+  }
+}
+
+function homePortfolioPageDelta(delta) {
+  homePortfolioPage += delta;
+  renderHomePortfolio();
+}
+
 var workspaceRoot = '';
 var workspaceBrowsePath = '';
 
@@ -2885,7 +3129,7 @@ function resetClientWorkspaceState() {
     var planBar = document.getElementById('planBar');
     if (planBar) planBar.style.display = 'none';
     var planDoc = document.getElementById('planDoc');
-    if (planDoc) planDoc.innerHTML = '<div class="muted">No plan yet — describe your goal in the chat.</div>';
+    if (planDoc) planDoc.innerHTML = '<div class="plan-empty"><div class="plan-empty-title">Start in the conversation</div><div class="plan-empty-body">Tell the planner what you want accomplished. The living plan and org preview will appear here.</div></div>';
     var planTitle = document.getElementById('planTitle');
     if (planTitle) planTitle.textContent = 'New plan';
     var planLog = document.getElementById('planLog');
@@ -3135,17 +3379,11 @@ function loadHome() {
       }
     }
 
-    var box = document.getElementById('companyRows');
     var coBlock = document.getElementById('companiesBlock');
-    var coCount = document.getElementById('homeCompanyCount');
-    if (box) {
-      box.innerHTML = '';
-      sorted.forEach(function (co) {
-        box.appendChild(renderCompanyRow(co));
-      });
-    }
+    homePortfolioList = sorted;
+    if (homePortfolioPage * HOME_PORTFOLIO_PAGE_SIZE >= sorted.length) homePortfolioPage = 0;
+    renderHomePortfolio();
     if (coBlock) coBlock.hidden = !list.length;
-    if (coCount) coCount.textContent = list.length ? list.length + ' compan' + (list.length === 1 ? 'y' : 'ies') : '';
 
     var plansBlock = document.getElementById('plansBlock');
     var planCount = document.getElementById('homePlanCount');
@@ -3216,7 +3454,7 @@ function deletePlan(slug, name) {
           planDraft = null;
           planSlug = null;
           document.getElementById('planBar').style.display = 'none';
-          document.getElementById('planDoc').innerHTML = '<div class="muted">No plan yet — describe your goal in the chat.</div>';
+          document.getElementById('planDoc').innerHTML = '<div class="plan-empty"><div class="plan-empty-title">Start in the conversation</div><div class="plan-empty-body">Tell the planner what you want accomplished. The living plan and org preview will appear here.</div></div>';
           document.getElementById('planTitle').textContent = 'New plan';
           document.getElementById('planLog').innerHTML = '';
           nav('home');
@@ -3239,22 +3477,24 @@ function loadHomeSkills(targetId) {
   if (!box) return;
   fetch('/api/skills').then(function (r) { return r.json(); }).then(function (list) {
     box.innerHTML = '';
-    var shown = list.slice(0, 8);
+    var limit = targetId === 'skillCardsWelcome' ? 5 : 4;
+    var shown = list.slice(0, limit);
     shown.forEach(function (s) {
       var preview = skillPreview(s.content, s.name);
-      var chip = el('div', 'skill-chip');
-      var name = el('div', 'name');
-      name.appendChild(el('span', 'src ' + s.source, s.source));
-      name.appendChild(el('span', null, preview.title || s.name));
-      chip.appendChild(name);
+      var row = el('div', 'home-skill');
+      var main = el('div', 'home-skill-main');
+      main.appendChild(el('div', 'home-skill-name', preview.title || s.name));
       var bits = [];
+      if (preview.title && preview.title !== s.name) bits.push(s.name);
       if (s.files > 1) bits.push(s.files + ' files');
       if (s.hasScripts) bits.push('scripts');
-      if (bits.length) chip.appendChild(el('div', 'meta', bits.join(' \\u00b7 ')));
-      chip.onclick = function () { openSkill(s.name); };
-      box.appendChild(chip);
+      if (bits.length) main.appendChild(el('div', 'home-skill-meta', bits.join(' \\u00b7 ')));
+      row.appendChild(main);
+      row.appendChild(el('span', 'src ' + s.source, s.source));
+      row.onclick = function () { openSkill(s.name); };
+      box.appendChild(row);
     });
-    var more = el('div', 'skill-chip more', list.length > shown.length
+    var more = el('div', 'home-skill more', list.length > shown.length
       ? 'Browse all \\u00b7 ' + list.length
       : '\\uff0b Browse library');
     more.onclick = function () { nav('skills'); };
@@ -5861,7 +6101,7 @@ function openPlan(slug) {
   planHistory = [];
   planDraft = null;
   document.getElementById('planLog').innerHTML = '';
-  document.getElementById('planDoc').innerHTML = '<div class="muted">No plan yet \\u2014 describe your goal in the chat.</div>';
+  document.getElementById('planDoc').innerHTML = '<div class="plan-empty"><div class="plan-empty-title">Start in the conversation</div><div class="plan-empty-body">Tell the planner what you want accomplished. The living plan and org preview will appear here.</div></div>';
   document.getElementById('planBar').style.display = 'none';
   document.getElementById('planName').value = '';
   document.getElementById('planTitle').textContent = 'New plan';
@@ -6285,51 +6525,87 @@ function skillPreview(content, fallbackName) {
   return { title: title, summary: summary, steps: steps, tools: tools };
 }
 
+var SKILLS_PAGE_SIZE = 10;
+var skillsPage = 0;
+var skillsList = [];
+
+function renderSkillItem(s) {
+  var preview = skillPreview(s.content, s.name);
+  var card = el('div', 'skillitem');
+  var top = el('div', 'skillitem-top');
+  top.appendChild(el('div', 'skillitem-name', preview.title));
+  card.appendChild(top);
+  card.appendChild(el('span', 'src ' + s.source, s.source));
+  if (preview.title !== s.name) card.appendChild(el('div', 'skillitem-slug', s.name));
+  if (preview.summary) card.appendChild(el('div', 'skillitem-desc', preview.summary));
+
+  var meta = el('div', 'skillitem-meta');
+  preview.tools.forEach(function (tool) {
+    meta.appendChild(el('span', 'chip', tool));
+  });
+  if (s.files > 1) meta.appendChild(el('span', null, s.files + ' files'));
+  else if (preview.steps) meta.appendChild(el('span', null, preview.steps + ' steps'));
+  if (s.hasScripts) meta.appendChild(el('span', 'chip', 'scripts'));
+  if (meta.childNodes.length) card.appendChild(meta);
+
+  card.onclick = function () { openSkill(s.name); };
+  return card;
+}
+
+function renderSkillsPage() {
+  var box = document.getElementById('skillItems');
+  var pager = document.getElementById('skillsPager');
+  var meta = document.getElementById('skillsPagerMeta');
+  var prev = document.getElementById('skillsPrev');
+  var next = document.getElementById('skillsNext');
+  var count = document.getElementById('skillsLibraryCount');
+  if (!box) return;
+
+  var total = skillsList.length;
+  var pages = Math.max(1, Math.ceil(total / SKILLS_PAGE_SIZE));
+  if (skillsPage >= pages) skillsPage = pages - 1;
+  if (skillsPage < 0) skillsPage = 0;
+
+  var start = skillsPage * SKILLS_PAGE_SIZE;
+  var slice = skillsList.slice(start, start + SKILLS_PAGE_SIZE);
+  box.innerHTML = '';
+  slice.forEach(function (s) {
+    box.appendChild(renderSkillItem(s));
+  });
+
+  if (count) {
+    count.textContent = total
+      ? total + ' skill' + (total === 1 ? '' : 's')
+      : '';
+  }
+
+  if (pager) {
+    if (total <= SKILLS_PAGE_SIZE) {
+      pager.hidden = true;
+    } else {
+      pager.hidden = false;
+      var from = start + 1;
+      var to = start + slice.length;
+      if (meta) meta.textContent = from + '\\u2013' + to + ' of ' + total;
+      if (prev) prev.disabled = skillsPage <= 0;
+      if (next) next.disabled = skillsPage >= pages - 1;
+    }
+  }
+}
+
+function skillsPageDelta(delta) {
+  skillsPage += delta;
+  renderSkillsPage();
+  var list = document.querySelector('#viewSkills .skilllist');
+  if (list && list.scrollIntoView) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function loadSkills() {
   fetch('/api/skills').then(function (r) { return r.json(); }).then(function (list) {
     skills = list;
-    var box = document.getElementById('skillItems');
-    if (!box) return;
-    box.innerHTML = '';
-    list.forEach(function (s) {
-      var preview = skillPreview(s.content, s.name);
-      var card = el('div', 'skillitem');
-      var top = el('div', 'skillitem-top');
-      top.appendChild(el('div', 'skillitem-name', preview.title));
-      top.appendChild(el('span', 'src ' + s.source, s.source));
-      card.appendChild(top);
-      if (preview.title !== s.name) card.appendChild(el('div', 'skillitem-slug', s.name));
-      if (preview.summary) card.appendChild(el('div', 'skillitem-desc', preview.summary));
-
-      var meta = el('div', 'skillitem-meta');
-      preview.tools.forEach(function (tool) {
-        meta.appendChild(el('span', 'chip', tool));
-      });
-      if (s.files > 1) meta.appendChild(el('span', null, s.files + ' files'));
-      else if (preview.steps) meta.appendChild(el('span', null, preview.steps + ' steps'));
-      if (s.hasScripts) meta.appendChild(el('span', 'chip', 'scripts'));
-      if (meta.childNodes.length) card.appendChild(meta);
-
-      card.onclick = function () { openSkill(s.name); };
-      box.appendChild(card);
-    });
-
-    var add = el('div', 'skillitem action', '\\uff0b New skill');
-    add.onclick = function () { openSkill(null); };
-    box.appendChild(add);
-
-    var upload = el('div', 'skillitem action');
-    var lab = document.createElement('label');
-    lab.textContent = 'Upload .zip / .md';
-    var inp = document.createElement('input');
-    inp.type = 'file';
-    inp.id = 'skillUpload';
-    inp.accept = '.zip,.md';
-    inp.style.display = 'none';
-    lab.appendChild(inp);
-    upload.appendChild(lab);
-    box.appendChild(upload);
-    inp.addEventListener('change', onSkillUpload);
+    skillsList = Array.isArray(list) ? list : [];
+    if (skillsPage * SKILLS_PAGE_SIZE >= skillsList.length) skillsPage = 0;
+    renderSkillsPage();
   });
 }
 
