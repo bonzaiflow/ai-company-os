@@ -1,0 +1,548 @@
+/** Shared globals, helpers, chat/plan composer utilities */
+export const STATE_AND_CHAT = `var view = 'home';
+var companySlug = null;
+var lastDataSigByCompany = {};
+
+function markDataFresh(on) {
+  var btn = document.getElementById('dataBtn');
+  if (!btn) return;
+  if (on) {
+    btn.classList.add('data-fresh');
+    btn.title = 'New data arrived \\u2014 open to inspect';
+  } else {
+    btn.classList.remove('data-fresh');
+    btn.title = '';
+  }
+}
+
+function toggleCoTools(e) {
+  if (e) e.stopPropagation();
+  var menu = document.getElementById('coToolsMenu');
+  var toggle = document.getElementById('coToolsToggle');
+  if (!menu || !toggle) return;
+  var open = menu.hasAttribute('hidden');
+  if (open) menu.removeAttribute('hidden');
+  else menu.setAttribute('hidden', '');
+  toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+document.addEventListener('click', function (e) {
+  var menu = document.getElementById('coToolsMenu');
+  var toggle = document.getElementById('coToolsToggle');
+  if (!menu || !toggle || menu.hasAttribute('hidden')) return;
+  if (menu.contains(e.target) || toggle.contains(e.target)) return;
+  menu.setAttribute('hidden', '');
+  toggle.setAttribute('aria-expanded', 'false');
+});
+
+function noteDataSig(sig) {
+  if (sig == null || !companySlug) return;
+  var prev = lastDataSigByCompany[companySlug];
+  if (prev != null && prev !== '' && sig !== prev) markDataFresh(true);
+  lastDataSigByCompany[companySlug] = sig;
+}
+var state = null;
+var selectedAgent = null;
+var agentSidebarOpen = true;
+var selectedTab = 'overview';
+var leftTab = 'queue';
+var planHistory = [];
+var planDraft = null;
+var planSlug = null;
+var chatHistories = {};
+var chatLoaded = {};
+var chiefSending = false;
+var planSending = false;
+var chiefStream = null; // { status, reasoning, reply }
+var planPhaseIndex = 0;
+var planPhaseTimer = null;
+var PLAN_ACTIVITY_PHASES = ['Composing reply\\u2026', 'Building plan\\u2026', 'Structuring agents\\u2026'];
+var skills = [];
+var selectedSkill = null;
+var skillFilePath = 'SKILL.md';
+var skillDirty = false;
+var cfg = { providers: [], roles: {}, models: {}, defaultProvider: '' };
+var liveTools = localStorage.getItem('liveTools') !== '0';
+var RANK_ACCENT = { chief: '#eab308', manager: '#d946ef', worker: '#3b82f6' };
+// every agent gets its own color: chief gold, managers purple tones, workers the rest
+var PALETTE = ['#3b82f6', '#22c55e', '#06b6d4', '#f97316', '#a78bfa', '#ef4444', '#facc15', '#4ade80', '#e879f9', '#60a5fa'];
+
+function agentColors(agents) {
+  var map = {};
+  var wi = 0;
+  (agents || []).forEach(function (a) {
+    if (a.rank === 'chief') map[a.name] = '#eab308';
+    else if (a.rank === 'manager') map[a.name] = '#d946ef';
+    else { map[a.name] = PALETTE[wi % PALETTE.length]; wi++; }
+  });
+  return map;
+}
+
+function agentColor(name) {
+  if (!state) return RANK_ACCENT.worker;
+  if (!state._colors) state._colors = agentColors(state.agents);
+  return state._colors[name] || RANK_ACCENT.worker;
+}
+
+function el(tag, cls, text) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function chatSendIconSvg() {
+  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '15');
+  svg.setAttribute('height', '15');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M8 13V3M8 3L4 7M8 3L12 7');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.75');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(path);
+  return svg;
+}
+
+function chatSpinnerSvg() {
+  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'setup-chat-send-spinner');
+  svg.setAttribute('width', '15');
+  svg.setAttribute('height', '15');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('aria-hidden', 'true');
+  var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  circle.setAttribute('cx', '8');
+  circle.setAttribute('cy', '8');
+  circle.setAttribute('r', '6');
+  circle.setAttribute('stroke', 'currentColor');
+  circle.setAttribute('stroke-width', '2');
+  circle.setAttribute('fill', 'none');
+  circle.setAttribute('opacity', '0.25');
+  var arc = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  arc.setAttribute('d', 'M14 8a6 6 0 0 0-6-6');
+  arc.setAttribute('stroke', 'currentColor');
+  arc.setAttribute('stroke-width', '2');
+  arc.setAttribute('stroke-linecap', 'round');
+  arc.setAttribute('fill', 'none');
+  svg.appendChild(circle);
+  svg.appendChild(arc);
+  return svg;
+}
+
+function resizeChatTextarea(ta) {
+  if (!ta) return;
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+}
+
+function syncChatSendBtn(btn, canSend, sending) {
+  if (!btn) return;
+  btn.className = 'setup-chat-send' + (canSend ? ' setup-chat-send-ready' : '');
+  btn.disabled = !canSend;
+  btn.setAttribute('aria-label', sending ? 'Sending' : 'Send message');
+  while (btn.firstChild) btn.removeChild(btn.firstChild);
+  btn.appendChild(sending ? chatSpinnerSvg() : chatSendIconSvg());
+}
+
+function syncChatComposerHint(hintEl, sending, thinkingLabel) {
+  if (!hintEl) return;
+  hintEl.textContent = sending ? (thinkingLabel || 'Working\\u2026') : 'Enter to send \\u00b7 Shift+Enter for newline';
+}
+
+function buildChatThinkingDots() {
+  var wrap = el('span', 'setup-chat-thinking-dots');
+  wrap.setAttribute('aria-hidden', 'true');
+  wrap.appendChild(el('span'));
+  wrap.appendChild(el('span'));
+  wrap.appendChild(el('span'));
+  return wrap;
+}
+
+function appendChatThinking(log, label, id) {
+  var msg = el('div', 'setup-chat-msg setup-chat-msg-assistant setup-chat-msg-thinking');
+  if (id) msg.id = id;
+  var body = el('div', 'setup-chat-msg-body');
+  var row = el('div', 'setup-chat-thinking-row');
+  row.setAttribute('aria-label', label || 'Assistant is working');
+  row.appendChild(buildChatThinkingDots());
+  var lbl = el('span', 'setup-chat-thinking-label thinking-label-text', label || '');
+  lbl.setAttribute('aria-live', 'polite');
+  row.appendChild(lbl);
+  body.appendChild(row);
+  msg.appendChild(body);
+  log.appendChild(msg);
+  log.scrollTop = log.scrollHeight;
+  return msg;
+}
+
+function appendSetupChatMessage(log, role, content, reasoning, created) {
+  var d = el('div', 'setup-chat-msg setup-chat-msg-' + role);
+  var body = el('div', 'setup-chat-msg-body');
+  if (role === 'assistant' && reasoning) {
+    var details = el('details', 'setup-chat-reasoning');
+    details.appendChild(el('summary', null, 'Reasoning'));
+    details.appendChild(document.createTextNode(reasoning));
+    body.appendChild(details);
+  }
+  fillChatMessageBody(body, content, created);
+  d.appendChild(body);
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+  return d;
+}
+
+/** Strip legacy "➕ queued TASK-…" lines when we render real task cards. */
+function stripQueuedTaskLines(content) {
+  return String(content || '')
+    .replace(/(?:^|\\n)(?:\\u2795|➕)\\s*queued\\s+TASK-\\d+[^\\n]*/g, '')
+    .replace(/\\n{3,}/g, '\\n\\n')
+    .trim();
+}
+
+/** Recover created-task refs from legacy assistant text if needed. */
+function createdFromMessage(m) {
+  if (m && Array.isArray(m.created) && m.created.length) return m.created;
+  var content = m && m.content ? m.content : '';
+  var out = [];
+  var re = /(?:\\u2795|➕)\\s*queued\\s+(TASK-\\d+)\\s*[\\u201c"]([^\\u201d"]*)[\\u201d"]/g;
+  var match;
+  while ((match = re.exec(content))) {
+    out.push({ id: match[1], title: match[2] || match[1] });
+  }
+  return out.length ? out : null;
+}
+
+function resolveChatTask(ref) {
+  var live = state && state.tasks ? state.tasks.find(function (t) { return t.id === ref.id; }) : null;
+  if (live) return live;
+  var chief = null;
+  try { chief = chiefOf(); } catch (e) {}
+  return {
+    id: ref.id,
+    title: ref.title || ref.id,
+    status: 'queued',
+    assignee: chief ? chief.name : '',
+    priority: 'normal',
+    parent: null
+  };
+}
+
+function appendChatCreatedTasks(host, created) {
+  if (!created || !created.length) return;
+  var wrap = el('div', 'setup-chat-created');
+  created.forEach(function (ref) {
+    wrap.appendChild(taskCard(resolveChatTask(ref)));
+  });
+  host.appendChild(wrap);
+}
+
+function fillChatMessageBody(body, content, created) {
+  var text = created && created.length ? stripQueuedTaskLines(content) : content;
+  if (text) body.appendChild(document.createTextNode(text));
+  appendChatCreatedTasks(body, created);
+}
+
+function appendChiefStreamMessage(log) {
+  var d = el('div', 'setup-chat-msg setup-chat-msg-assistant');
+  d.id = 'chiefStreamMsg';
+  var body = el('div', 'setup-chat-msg-body');
+  var details = el('details', 'setup-chat-reasoning');
+  details.id = 'chiefStreamReasoning';
+  details.open = true;
+  details.style.display = 'none';
+  details.appendChild(el('summary', null, 'Reasoning'));
+  var reasonText = el('div');
+  reasonText.id = 'chiefStreamReasoningText';
+  details.appendChild(reasonText);
+  body.appendChild(details);
+  var status = el('div', 'setup-chat-thinking-row');
+  status.id = 'chiefStreamStatus';
+  status.appendChild(buildChatThinkingDots());
+  var statusLabel = el('span', 'setup-chat-thinking-label', (chiefStream && chiefStream.status) || 'Composing reply\\u2026');
+  statusLabel.id = 'chiefStreamStatusLabel';
+  status.appendChild(statusLabel);
+  body.appendChild(status);
+  var reply = el('div', 'setup-chat-stream-body');
+  reply.id = 'chiefStreamReply';
+  body.appendChild(reply);
+  var caret = el('span', 'setup-chat-stream-caret');
+  caret.id = 'chiefStreamCaret';
+  body.appendChild(caret);
+  d.appendChild(body);
+  log.appendChild(d);
+  syncChiefStreamDom();
+  log.scrollTop = log.scrollHeight;
+  return d;
+}
+
+function syncChiefStreamDom() {
+  if (!chiefStream) return;
+  var reasonWrap = document.getElementById('chiefStreamReasoning');
+  var reasonText = document.getElementById('chiefStreamReasoningText');
+  var status = document.getElementById('chiefStreamStatus');
+  var statusLabel = document.getElementById('chiefStreamStatusLabel');
+  var reply = document.getElementById('chiefStreamReply');
+  var caret = document.getElementById('chiefStreamCaret');
+  var hint = document.getElementById('chiefChatHint');
+  if (reasonWrap && reasonText) {
+    if (chiefStream.reasoning) {
+      reasonWrap.style.display = '';
+      reasonText.textContent = chiefStream.reasoning;
+    } else {
+      reasonWrap.style.display = 'none';
+    }
+  }
+  if (status) {
+    status.style.display = chiefStream.reply ? 'none' : '';
+  }
+  if (statusLabel && chiefStream.status) statusLabel.textContent = chiefStream.status;
+  if (reply) reply.textContent = chiefStream.reply || '';
+  if (caret) caret.style.display = chiefSending ? '' : 'none';
+  if (hint) syncChatComposerHint(hint, true, chiefStream.status || 'Working\\u2026');
+  var log = document.getElementById('chiefChatLog');
+  if (log) log.scrollTop = log.scrollHeight;
+}
+
+function setChatMessageContent(msgEl, content) {
+  if (!msgEl) return;
+  msgEl.className = 'setup-chat-msg setup-chat-msg-assistant';
+  msgEl.innerHTML = '';
+  msgEl.appendChild(el('div', 'setup-chat-msg-body', content));
+  var log = msgEl.parentElement;
+  if (log) log.scrollTop = log.scrollHeight;
+}
+
+function getPlanThinkingLabel() {
+  return PLAN_ACTIVITY_PHASES[planPhaseIndex % PLAN_ACTIVITY_PHASES.length];
+}
+
+function updatePlanThinkingUI() {
+  var label = getPlanThinkingLabel();
+  syncChatComposerHint(document.getElementById('planChatHint'), true, label);
+  var thinking = document.querySelector('#planThinking .thinking-label-text');
+  if (thinking) thinking.textContent = label;
+}
+
+function startPlanPhaseTimer() {
+  if (planPhaseTimer) clearInterval(planPhaseTimer);
+  planPhaseIndex = 0;
+  updatePlanThinkingUI();
+  planPhaseTimer = setInterval(function () {
+    planPhaseIndex = (planPhaseIndex + 1) % PLAN_ACTIVITY_PHASES.length;
+    updatePlanThinkingUI();
+  }, 2800);
+}
+
+function stopPlanPhaseTimer() {
+  if (planPhaseTimer) { clearInterval(planPhaseTimer); planPhaseTimer = null; }
+  planPhaseIndex = 0;
+}
+
+function buildChatComposer(opts) {
+  var dock = el('div', 'setup-chat-dock');
+  var form = el('form', 'setup-chat-composer');
+  form.onsubmit = function (e) { e.preventDefault(); opts.onSend(); };
+
+  var chips = el('div', 'chat-attach-chips');
+  chips.id = opts.attachChipsId || '';
+  chips.hidden = true;
+  form.appendChild(chips);
+
+  var ta = el('textarea');
+  ta.id = opts.textareaId;
+  ta.placeholder = opts.placeholder;
+  ta.rows = 1;
+  ta.setAttribute('aria-label', 'Message');
+  ta.disabled = !!opts.sending;
+  function refreshSend() {
+    var hasText = ta.value.trim().length > 0;
+    var hasAttach = opts.hasPendingAttachments ? !!opts.hasPendingAttachments() : false;
+    syncChatSendBtn(opts.sendBtnRef, (hasText || hasAttach) && !opts.sending && !ta.disabled, opts.sending);
+  }
+  ta.oninput = function () {
+    resizeChatTextarea(ta);
+    refreshSend();
+  };
+  ta.onkeydown = function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); opts.onSend(); }
+  };
+
+  var bar = el('div', 'setup-chat-composer-bar');
+  var hint = el('span', 'setup-chat-composer-hint');
+  hint.id = opts.hintId;
+
+  var actions = el('div', 'setup-chat-composer-actions');
+
+  // optional 📎 attach (overpass-turbo JSON/GeoJSON/CSV or any data file)
+  if (opts.onAttach) {
+    var fileIn = el('input');
+    fileIn.type = 'file';
+    fileIn.accept = '.json,.geojson,.csv,.tsv,.txt';
+    fileIn.style.display = 'none';
+    fileIn.onchange = function () {
+      if (fileIn.files && fileIn.files[0]) opts.onAttach(fileIn.files[0]);
+      fileIn.value = '';
+    };
+    var attach = el('button', 'setup-chat-attach', '\\ud83d\\udcce');
+    attach.type = 'button';
+    attach.title = 'Attach data for your next message (overpass-turbo JSON/GeoJSON/CSV)';
+    attach.onclick = function () { fileIn.click(); };
+    actions.appendChild(fileIn);
+    actions.appendChild(attach);
+  }
+
+  var sendBtn = el('button');
+  sendBtn.type = 'submit';
+  sendBtn.id = opts.sendId;
+  opts.sendBtnRef = sendBtn;
+
+  actions.appendChild(sendBtn);
+  bar.appendChild(hint);
+  bar.appendChild(actions);
+  form.appendChild(ta);
+  form.appendChild(bar);
+  dock.appendChild(form);
+
+  refreshSend();
+  syncChatComposerHint(hint, !!opts.sending, opts.thinkingLabel);
+  resizeChatTextarea(ta);
+  if (opts.renderAttachments) opts.renderAttachments();
+
+  return { dock: dock, textarea: ta, sendBtn: sendBtn, hint: hint, refreshSend: refreshSend };
+}
+
+function syncPlanComposer() {
+  var ta = document.getElementById('planInput');
+  var btn = document.getElementById('planSend');
+  var hint = document.getElementById('planChatHint');
+  if (!ta || !btn || !hint) return;
+  ta.disabled = planSending;
+  var can = (ta.value.trim().length > 0 || planPendingAttachments.length > 0) && !planSending;
+  syncChatSendBtn(btn, can, planSending);
+  if (planSending) syncChatComposerHint(hint, true, getPlanThinkingLabel());
+  else hint.textContent = 'Enter to send \\u00b7 drop plan sections for context';
+}
+
+function insertPlanContext(text) {
+  var ta = document.getElementById('planInput');
+  if (!ta || planSending) return;
+  var chunk = String(text || '').trim();
+  if (!chunk) return;
+  var cur = ta.value;
+  var start = ta.selectionStart != null ? ta.selectionStart : cur.length;
+  var end = ta.selectionEnd != null ? ta.selectionEnd : cur.length;
+  var before = cur.slice(0, start);
+  var after = cur.slice(end);
+  var padBefore = before && !/\\n\\s*$/.test(before) ? '\\n\\n' : (before && !/\\n$/.test(before) ? '\\n' : '');
+  var padAfter = after && !/^\\n/.test(after) ? '\\n\\n' : '';
+  var next = before + padBefore + chunk + padAfter + after;
+  ta.value = next;
+  var caret = (before + padBefore + chunk).length;
+  ta.focus();
+  try { ta.setSelectionRange(caret, caret); } catch (e) {}
+  resizeChatTextarea(ta);
+  syncPlanComposer();
+}
+
+function bindPlanChatDrop(target) {
+  if (!target || target.dataset.dropReady) return;
+  target.dataset.dropReady = '1';
+  target.addEventListener('dragover', function (e) {
+    if (!e.dataTransfer) return;
+    var types = e.dataTransfer.types;
+    var ok = false;
+    for (var i = 0; i < types.length; i++) {
+      if (types[i] === 'text/plain' || types[i] === 'text/uri-list') { ok = true; break; }
+    }
+    if (!ok) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    target.classList.add('drag-over');
+  });
+  target.addEventListener('dragleave', function (e) {
+    if (e.relatedTarget && target.contains(e.relatedTarget)) return;
+    target.classList.remove('drag-over');
+  });
+  target.addEventListener('drop', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    target.classList.remove('drag-over');
+    var text = e.dataTransfer && e.dataTransfer.getData('text/plain');
+    if (text) insertPlanContext(text);
+  });
+}
+
+function makePlanDraggable(node, getText) {
+  if (!node) return node;
+  node.classList.add('plan-seg');
+  node.draggable = true;
+  node.title = node.title || 'Drag into chat for context';
+  node.addEventListener('dragstart', function (e) {
+    var text = typeof getText === 'function' ? getText() : getText;
+    text = String(text || '').trim();
+    if (!text) { e.preventDefault(); return; }
+    e.stopPropagation();
+    node.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('text/plain', text);
+    try {
+      var ghost = node.cloneNode(true);
+      ghost.style.position = 'absolute';
+      ghost.style.top = '-9999px';
+      ghost.style.width = Math.min(node.offsetWidth, 320) + 'px';
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 16, 16);
+      setTimeout(function () { ghost.remove(); }, 0);
+    } catch (err) {}
+  });
+  node.addEventListener('dragend', function () { node.classList.remove('dragging'); });
+  return node;
+}
+
+function planSegHeading(title) {
+  var h = el('h2', 'sec');
+  h.appendChild(el('span', 'plan-seg-grip', '\\u2837'));
+  h.appendChild(document.createTextNode(title));
+  return h;
+}
+
+function appendPlanSegment(box, title, buildBody, getText) {
+  var seg = el('div', 'plan-seg');
+  seg.appendChild(planSegHeading(title));
+  var body = el('div', 'plan-seg-body');
+  buildBody(body);
+  seg.appendChild(body);
+  makePlanDraggable(seg, getText);
+  box.appendChild(seg);
+  return seg;
+}
+
+function agentContextText(a) {
+  var lines = ['--- Agent: ' + a.name + ' ---', 'rank: ' + a.rank, 'role: ' + a.role];
+  if (a.manager) lines.push('reports to: ' + a.manager);
+  if ((a.tools || []).length) lines.push('tools: ' + a.tools.join(', '));
+  if ((a.skills || []).length) lines.push('skills: ' + a.skills.join(', '));
+  (a.responsibilities || []).forEach(function (r) { lines.push('- ' + r); });
+  return lines.join('\\n');
+}
+
+function initPlanChatComposer() {
+  var ta = document.getElementById('planInput');
+  var btn = document.getElementById('planSend');
+  var form = document.getElementById('planChatForm');
+  if (!ta || !btn || btn.dataset.ready) return;
+  btn.dataset.ready = '1';
+  ta.oninput = function () { resizeChatTextarea(ta); syncPlanComposer(); };
+  ta.onkeydown = function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPlanMsg(); }
+  };
+  bindPlanChatDrop(form);
+  syncPlanComposer();
+}
+
+`;
