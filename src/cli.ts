@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
-import { initWorkspace, loadConfig } from "./config.js";
+import { initWorkspace, loadConfig, resolveUiWorkspaceRoot, setPersistedWorkspaceRoot } from "./config.js";
 import { createProvider } from "./llm/index.js";
 import { listCheckins, runCheckin } from "./core/checkin.js";
 import { decideApproval, listApprovals } from "./core/governance.js";
@@ -508,8 +508,11 @@ program
   .option("--port <port>", "port", "4646")
   .option("--dev", "enable live reload (use with npm run dev:ui)")
   .option("--daemon", "also wake scheduled companies in this process (perpetual mode)")
+  .option("--cwd", "use the current directory even if a last workspace is saved")
   .action((opts) => {
-    serveUi(ROOT, Number(opts.port), BUNDLED_SKILLS, { dev: !!opts.dev, daemon: !!opts.daemon });
+    const root = opts.cwd ? ROOT : resolveUiWorkspaceRoot(ROOT);
+    setPersistedWorkspaceRoot(root);
+    serveUi(root, Number(opts.port), BUNDLED_SKILLS, { dev: !!opts.dev, daemon: !!opts.daemon });
   });
 
 program.parseAsync().catch((e) => {

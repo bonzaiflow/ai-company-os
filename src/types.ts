@@ -202,6 +202,8 @@ export interface AiCompanyOsConfig {
   roles?: RoleDefaults;
   /** per-role model override (pairs with roles: source + model) */
   models?: RoleDefaults;
+  /** last workspace folder opened in the dashboard (user config only) */
+  workspaceRoot?: string;
 }
 
 /** One decision emitted by an agent per step. Flat on purpose: small models

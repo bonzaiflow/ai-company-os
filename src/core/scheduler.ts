@@ -77,16 +77,18 @@ export async function wakeCompany(
 }
 
 export async function runDaemon(
-  root: string,
+  rootOrGet: string | (() => string),
   loadCfg: () => AiCompanyOsConfig,
   opts: { intervalSec?: number; log?: (l: string) => void; shouldStop?: () => boolean } = {}
 ): Promise<void> {
+  const getRoot = typeof rootOrGet === "function" ? rootOrGet : () => rootOrGet;
   const log = opts.log ?? (() => {});
   const interval = (opts.intervalSec ?? 60) * 1000;
   log(`daemon started — waking companies every ${interval / 1000}s (ctrl-c to stop)`);
   // one company at a time: a single local model host shouldn't be swamped
   for (;;) {
     if (opts.shouldStop?.()) return;
+    const root = getRoot();
     for (const slug of Company.list(root)) {
       if (opts.shouldStop?.()) return;
       try {

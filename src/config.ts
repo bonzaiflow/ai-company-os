@@ -96,3 +96,40 @@ export function initWorkspace(root: string): string {
   fs.mkdirSync(path.join(root, "skills"), { recursive: true });
   return file;
 }
+
+/** True when the folder already looks like an AI Company OS workspace. */
+export function isWorkspaceInitialized(root: string): boolean {
+  if (!root || !fs.existsSync(root) || !fs.statSync(root).isDirectory()) return false;
+  if (fs.existsSync(path.join(root, "ai-company-os.json"))) return true;
+  if (fs.existsSync(path.join(root, "dmfo.json"))) return true;
+  if (fs.existsSync(path.join(root, "companies"))) return true;
+  return false;
+}
+
+/** Last dashboard workspace from ~/.ai-company-os/config.json, if still valid. */
+export function getPersistedWorkspaceRoot(): string | null {
+  const user = readJson<Partial<AiCompanyOsConfig>>(userConfigPath(), {});
+  const raw = user.workspaceRoot;
+  if (!raw || typeof raw !== "string") return null;
+  const resolved = path.resolve(raw);
+  try {
+    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) return resolved;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/** Persist the dashboard workspace folder into the user config. */
+export function setPersistedWorkspaceRoot(root: string): void {
+  const file = userConfigPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const user = readJson<Partial<AiCompanyOsConfig>>(file, {});
+  user.workspaceRoot = path.resolve(root);
+  writeJson(file, user);
+}
+
+/** Boot path for `ai-company-os ui`: persisted workspace, else cwd. */
+export function resolveUiWorkspaceRoot(cwd: string = process.cwd()): string {
+  return getPersistedWorkspaceRoot() ?? path.resolve(cwd);
+}

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
@@ -24,7 +25,13 @@ function resolveVendor(name: string): string | null {
 }
 
 const execFileAsync = promisify(execFile);
-import { loadConfig, saveRoles } from "../config.js";
+import {
+  initWorkspace,
+  isWorkspaceInitialized,
+  loadConfig,
+  saveRoles,
+  setPersistedWorkspaceRoot,
+} from "../config.js";
 import { chiefChatStream } from "../core/chat.js";
 import {
   deleteSkill,
@@ -283,13 +290,19 @@ function pushRunnerLog(r: RunnerState, line: string): void {
  * management, chat with the chief, and role-default configuration. The
  * runtime itself still runs via `ai-company-os run`. */
 export function serveUi(
-  root: string,
+  initialRoot: string,
   port: number,
   bundledSkillsDir: string,
   opts: { dev?: boolean; daemon?: boolean } = {}
 ): void {
+  let root = path.resolve(initialRoot);
   const dev = opts.dev ?? false;
   const bootId = Date.now();
+
+  function workspacePayload() {
+    return { root, initialized: isWorkspaceInitialized(root) };
+  }
+
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://x");
     try {
@@ -328,11 +341,66 @@ export function serveUi(
       if (req.method === "GET" && url.pathname === "/api/config") {
         const cfg = loadConfig(root);
         json(res, {
+          root,
           providers: Object.keys(cfg.providers).filter((p) => cfg.providers[p].type !== "mock"),
           defaultProvider: cfg.defaultProvider,
           roles: cfg.roles ?? {},
           models: cfg.models ?? {},
           skills: skillNames(root, bundledSkillsDir),
+        });
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/workspace") {
+        json(res, workspacePayload());
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/workspace") {
+        const body = await readBody(req);
+        const raw = String(body.root ?? "").trim();
+        if (!raw) {
+          json(res, { error: "root is required" }, 400);
+          return;
+        }
+        const next = path.resolve(raw);
+        if (!fs.existsSync(next) || !fs.statSync(next).isDirectory()) {
+          json(res, { error: "not a directory: " + next }, 400);
+          return;
+        }
+        if (body.init) initWorkspace(next);
+        root = next;
+        setPersistedWorkspaceRoot(root);
+        console.log(c.dim("workspace → " + root));
+        json(res, workspacePayload());
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/workspace/browse") {
+        const raw = url.searchParams.get("path") || root || os.homedir();
+        let dir = path.resolve(raw);
+        if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+          json(res, { error: "not a directory: " + dir }, 400);
+          return;
+        }
+        const parent = path.dirname(dir);
+        let entries: { name: string; path: string }[] = [];
+        try {
+          entries = fs
+            .readdirSync(dir, { withFileTypes: true })
+            .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+            .map((d) => ({ name: d.name, path: path.join(dir, d.name) }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+        } catch (e) {
+          json(res, { error: (e as Error).message }, 403);
+          return;
+        }
+        json(res, {
+          path: dir,
+          parent: parent !== dir ? parent : null,
+          home: os.homedir(),
+          initialized: isWorkspaceInitialized(dir),
+          entries,
         });
         return;
       }
@@ -1190,11 +1258,12 @@ export function serveUi(
 
   server.listen(port, () => {
     console.log(c.green(`AI Company OS dashboard → http://localhost:${port}`));
+    console.log(c.dim("workspace: " + root));
     if (dev) console.log(c.dim("dev mode — server restarts on rebuild, browser reloads on restart"));
     console.log(c.dim("plan + chat run through your configured providers; `ai-company-os run` executes the queue"));
     if (opts.daemon) {
       console.log(c.green("perpetual mode: waking scheduled companies in this process"));
-      void runDaemon(root, () => loadConfig(root), {
+      void runDaemon(() => root, () => loadConfig(root), {
         intervalSec: 60,
         log: (l) => console.log(c.dim("[daemon] ") + l),
       });
