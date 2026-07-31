@@ -195,16 +195,83 @@ function openDbSql() {
       var b = el('a', null, '\\u2190 back to ' + dbState.table); b.style.cssText = 'color:#60a5fa;cursor:pointer;font-size:0.78rem';
       b.onclick = function () { renderDb(); loadDbPage(); };
       body.appendChild(b);
+
+      var promptBox = el('div', 'dbsql-prompt');
+      promptBox.appendChild(el('div', 'dbsql-label', 'Prompt'));
+      var prompt = el('textarea', 'dbsql-ask'); prompt.id = 'dbSqlPrompt';
+      prompt.placeholder = 'Describe what you want to see\\u2026';
+      prompt.rows = 2;
+      prompt.onkeydown = function (e) {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); promptDbSql(); }
+      };
+      promptBox.appendChild(prompt);
+      var promptRow = el('div', 'dbsql-actions');
+      var ask = el('button', 'btn', 'Write SQL'); ask.id = 'dbSqlAskBtn';
+      ask.title = 'Generate a read-only query with the execution (or agents) model';
+      ask.onclick = promptDbSql;
+      promptRow.appendChild(ask);
+      promptRow.appendChild(el('span', 'muted', 'execution / agents model \\u00b7 \\u2318\\u21a9'));
+      promptBox.appendChild(promptRow);
+      var promptStatus = el('div', 'muted'); promptStatus.id = 'dbSqlPromptStatus';
+      promptStatus.style.marginTop = '0.35rem';
+      promptBox.appendChild(promptStatus);
+      body.appendChild(promptBox);
+
+      body.appendChild(el('div', 'dbsql-label', 'SQL'));
       var ta = el('textarea', 'dbsql'); ta.id = 'dbSql';
-      ta.value = 'SELECT * FROM ' + dbState.table + ' LIMIT 50';
-      ta.style.marginTop = '0.5rem';
+      ta.value = 'SELECT * FROM "' + dbState.table + '" LIMIT 50';
       ta.onkeydown = function (e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runDbSql(); } };
       body.appendChild(ta);
-      var run = el('button', 'btn', 'Run (\\u2318\\u21a9)'); run.style.marginTop = '0.4rem'; run.onclick = runDbSql;
-      body.appendChild(run);
-      body.appendChild(el('span', 'muted', '  SELECT / PRAGMA / WITH only'));
+      var runRow = el('div', 'dbsql-actions');
+      var run = el('button', 'btn', 'Run (\\u2318\\u21a9)'); run.onclick = runDbSql;
+      runRow.appendChild(run);
+      runRow.appendChild(el('span', 'muted', 'SELECT / PRAGMA / WITH only'));
+      body.appendChild(runRow);
       var out = el('div'); out.id = 'dbSqlOut'; body.appendChild(out);
     }
+  });
+}
+
+function promptDbSql() {
+  var promptEl = document.getElementById('dbSqlPrompt');
+  var status = document.getElementById('dbSqlPromptStatus');
+  var askBtn = document.getElementById('dbSqlAskBtn');
+  var ta = document.getElementById('dbSql');
+  if (!promptEl || !ta) return;
+  var text = (promptEl.value || '').trim();
+  if (!text) {
+    if (status) status.textContent = 'Describe what you want first.';
+    promptEl.focus();
+    return;
+  }
+  if (askBtn) askBtn.disabled = true;
+  if (status) status.textContent = 'Writing SQL\\u2026';
+  fetch('/api/db/prompt', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      company: companySlug,
+      db: dbState.db,
+      table: dbState.table,
+      prompt: text
+    })
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (askBtn) askBtn.disabled = false;
+    if (d.error) {
+      if (status) status.textContent = 'error: ' + d.error;
+      return;
+    }
+    ta.value = d.sql;
+    if (status) {
+      status.textContent = 'filled via ' + (d.role || 'model')
+        + (d.provider ? ' \\u00b7 ' + d.provider : '')
+        + (d.model ? '/' + d.model : '')
+        + ' \\u2014 review, then Run';
+    }
+    ta.focus();
+  }).catch(function (e) {
+    if (askBtn) askBtn.disabled = false;
+    if (status) status.textContent = 'failed: ' + e;
   });
 }
 

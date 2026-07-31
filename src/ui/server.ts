@@ -1108,6 +1108,137 @@ export function serveUi(
         return;
       }
 
+      // Natural-language → read-only SQL (execution model, else agents).
+      if (req.method === "POST" && url.pathname === "/api/db/prompt") {
+        const body = await readBody(req);
+        const co = Company.open(root, String(body.company ?? ""));
+        const dbName = String(body.db ?? "");
+        const prompt = String(body.prompt ?? "").trim();
+        const focusTable = String(body.table ?? "").trim();
+        if (!prompt) {
+          json(res, { error: "prompt required" }, 400);
+          return;
+        }
+        if (!/^[\w.-]+$/.test(dbName)) {
+          json(res, { error: "invalid db name" }, 400);
+          return;
+        }
+        const dbPath = path.join(co.dir, "data", dbName);
+        if (!fs.existsSync(dbPath)) {
+          json(res, { error: `no such database ${dbName}` }, 404);
+          return;
+        }
+
+        let schemaText = "";
+        try {
+          const db = new DatabaseSync(dbPath, { readOnly: true });
+          const tables = (
+            db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as {
+              name: string;
+            }[]
+          ).map((t) => t.name);
+          const lines: string[] = [];
+          for (const name of tables) {
+            const cols = db.prepare(`PRAGMA table_info("${name}")`).all() as {
+              name: string;
+              type: string;
+              notnull: number;
+              pk: number;
+            }[];
+            const colDesc = cols
+              .map((c) => {
+                const bits = [c.name, c.type || "ANY"];
+                if (c.pk) bits.push("PK");
+                if (c.notnull) bits.push("NOT NULL");
+                return bits.join(" ");
+              })
+              .join(", ");
+            lines.push(`- ${name} (${colDesc})`);
+          }
+          db.close();
+          schemaText = lines.length ? lines.join("\n") : "(no tables)";
+        } catch (e) {
+          json(res, { error: (e as Error).message }, 400);
+          return;
+        }
+
+        const cfg = loadConfig(root);
+        const meta = co.meta;
+        // Prefer execution (fast structured helper), else agents — company overrides win.
+        let roleKind: "execution" | "agents" | "default" = "default";
+        let roleUsed: string;
+        let modelUsed: string | undefined;
+        if (meta.roles?.execution) {
+          roleKind = "execution";
+          roleUsed = meta.roles.execution;
+          modelUsed = meta.models?.execution ?? cfg.models?.execution;
+        } else if (meta.roles?.agents) {
+          roleKind = "agents";
+          roleUsed = meta.roles.agents;
+          modelUsed = meta.models?.agents ?? cfg.models?.agents ?? meta.model;
+        } else if (cfg.roles?.execution) {
+          roleKind = "execution";
+          roleUsed = cfg.roles.execution;
+          modelUsed = cfg.models?.execution;
+        } else if (cfg.roles?.agents) {
+          roleKind = "agents";
+          roleUsed = cfg.roles.agents;
+          modelUsed = cfg.models?.agents ?? meta.model;
+        } else {
+          roleUsed = meta.provider || cfg.defaultProvider;
+          modelUsed = meta.model;
+        }
+
+        let provider;
+        try {
+          provider = createProvider(cfg, roleUsed, modelUsed);
+        } catch (e) {
+          json(res, { error: (e as Error).message }, 400);
+          return;
+        }
+
+        const system =
+          "You write SQLite read-only queries for a data browser.\n" +
+          "Rules:\n" +
+          "- Reply with ONLY one SQL statement. No prose, no markdown fences, no comments.\n" +
+          "- Allowed: SELECT, WITH (CTE), PRAGMA, EXPLAIN. Never write/modify data.\n" +
+          "- Use double-quoted identifiers when needed. Prefer LIMIT 50 unless the user asks otherwise.\n" +
+          "- Stick to the schema below; do not invent tables or columns.\n" +
+          (focusTable ? `- The user is currently viewing table "${focusTable}". Prefer it when relevant.\n` : "") +
+          `\nDatabase file: ${dbName}\nSchema:\n${schemaText}`;
+
+        try {
+          const result = await provider.chat([
+            { role: "system", content: system },
+            { role: "user", content: prompt },
+          ]);
+          let sql = String(result.content ?? "").trim();
+          const fence = sql.match(/```(?:sql|sqlite)?\s*([\s\S]*?)```/i);
+          if (fence) sql = fence[1].trim();
+          sql = sql.replace(/;+\s*$/, "").trim();
+          if (!/^\s*(select|pragma|with|explain)/i.test(sql)) {
+            json(
+              res,
+              {
+                error: "model did not return a read-only query",
+                raw: String(result.content ?? "").slice(0, 500),
+              },
+              400
+            );
+            return;
+          }
+          json(res, {
+            sql,
+            role: roleKind,
+            provider: provider.name,
+            model: provider.model,
+          });
+        } catch (e) {
+          json(res, { error: (e as Error).message }, 500);
+        }
+        return;
+      }
+
       // ---- skills ----
 
       if (req.method === "GET" && url.pathname === "/api/skills") {
