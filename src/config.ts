@@ -1,0 +1,98 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { AiCompanyOsConfig } from "./types.js";
+import { readJson, writeJson } from "./util.js";
+
+// NOTE: no default `roles` here on purpose — role overrides must come from an
+// actual config file, otherwise they'd silently override per-company providers
+const DEFAULT_CONFIG: AiCompanyOsConfig = {
+  defaultProvider: "ollama-local",
+  providers: {
+    "ollama-local": {
+      type: "ollama",
+      baseUrl: "http://localhost:11434",
+      model: "gemma4:12b",
+    },
+    "ollama-local-small": {
+      type: "ollama",
+      baseUrl: "http://localhost:11434",
+      model: "gemma3:4b",
+    },
+    "ollama-remote": {
+      type: "ollama",
+      baseUrl: "http://REMOTE_HOST:11434",
+      model: "gemma4:31b",
+    },
+    openrouter: {
+      type: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1",
+      model: "google/gemma-4-31b-it:free",
+      apiKeyEnv: "OPENROUTER_API_KEY",
+    },
+    cursor: {
+      type: "cursor",
+      model: "auto",
+      command: "cursor-agent",
+    },
+    claude: {
+      type: "claude",
+      model: "sonnet",
+      command: "claude",
+    },
+  },
+};
+
+export function configPath(root: string): string {
+  const preferred = path.join(root, "ai-company-os.json");
+  const legacy = path.join(root, "dmfo.json");
+  if (fs.existsSync(preferred) || !fs.existsSync(legacy)) return preferred;
+  return legacy;
+}
+
+function userConfigPath(): string {
+  const preferred = path.join(os.homedir(), ".ai-company-os", "config.json");
+  const legacy = path.join(os.homedir(), ".dmfo", "config.json");
+  if (fs.existsSync(preferred) || !fs.existsSync(legacy)) return preferred;
+  return legacy;
+}
+
+/** Project config (./ai-company-os.json) wins over user config (~/.ai-company-os/config.json).
+ * Legacy dmfo.json / ~/.dmfo/config.json are still read if the new paths are absent. */
+export function loadConfig(root: string): AiCompanyOsConfig {
+  const user = readJson<Partial<AiCompanyOsConfig>>(userConfigPath(), {});
+  const project = readJson<Partial<AiCompanyOsConfig>>(configPath(root), {});
+  return {
+    defaultProvider:
+      project.defaultProvider ?? user.defaultProvider ?? DEFAULT_CONFIG.defaultProvider,
+    roles: { ...user.roles, ...project.roles },
+    models: { ...user.models, ...project.models },
+    providers: {
+      ...DEFAULT_CONFIG.providers,
+      ...user.providers,
+      ...project.providers,
+    },
+  };
+}
+
+/** Persist role defaults (provider and/or model) into the project config. */
+export function saveRoles(
+  root: string,
+  roles: Record<string, string>,
+  models?: Record<string, string>
+): void {
+  const file = configPath(root);
+  const project = readJson<Partial<AiCompanyOsConfig>>(file, {});
+  if (Object.keys(roles).length) project.roles = { ...project.roles, ...roles };
+  if (models && Object.keys(models).length) project.models = { ...project.models, ...models };
+  writeJson(file, project);
+}
+
+export function initWorkspace(root: string): string {
+  const file = configPath(root);
+  if (!fs.existsSync(file)) writeJson(file, DEFAULT_CONFIG);
+  fs.mkdirSync(path.join(root, "companies"), { recursive: true });
+  fs.mkdirSync(path.join(root, "plans"), { recursive: true });
+  fs.mkdirSync(path.join(root, "skills"), { recursive: true });
+  return file;
+}

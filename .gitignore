@@ -1,0 +1,5 @@
+node_modules/
+dist/
+companies/
+plans/
+.DS_Store

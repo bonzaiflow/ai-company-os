@@ -1,0 +1,31 @@
+{
+  "name": "ai-company-os",
+  "version": "0.1.0",
+  "description": "Agent-swarm orchestrator for small local models — plan with an LLM, launch a company of agents, watch them work.",
+  "type": "module",
+  "bin": {
+    "ai-company-os": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "skills"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "dev:ui": "node scripts/dev-ui.mjs",
+    "smoke": "npm run build && node dist/smoke.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "cytoscape": "^3.34.0",
+    "cytoscape-dagre": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

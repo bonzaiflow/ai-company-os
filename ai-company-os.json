@@ -1,0 +1,36 @@
+{
+  "defaultProvider": "ollama-local",
+  "providers": {
+    "ollama-local": {
+      "type": "ollama",
+      "baseUrl": "http://localhost:11434",
+      "model": "gemma3:4b"
+    },
+    "ollama-local-small": {
+      "type": "ollama",
+      "baseUrl": "http://localhost:11434",
+      "model": "gemma3:4b"
+    },
+    "ollama-remote": {
+      "type": "ollama",
+      "baseUrl": "http://REMOTE_HOST:11434",
+      "model": "gemma4:31b"
+    },
+    "openrouter": {
+      "type": "openrouter",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "model": "google/gemma-4-31b-it:free",
+      "apiKeyEnv": "OPENROUTER_API_KEY"
+    }
+  },
+  "roles": {
+    "planning": "cursor",
+    "agents": "cursor",
+    "execution": "cursor"
+  },
+  "models": {
+    "planning": "auto",
+    "agents": "auto",
+    "execution": "auto"
+  }
+}
