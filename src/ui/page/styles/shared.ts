@@ -122,7 +122,7 @@ export const SHARED = `.accentbar { height: 3px; background: linear-gradient(90d
 .org-card.sel.active {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 26px color-mix(in srgb, var(--accent) 24%, transparent);
 }
-.org-accent { height: 2px; background: linear-gradient(90deg, var(--accent), transparent); }
+.org-accent { height: 2px; background: var(--accent); }
 .org-body { padding: 0.8rem 0.9rem 0.9rem; }
 .org-rank {
   display: inline-block; font-family: "JetBrains Mono", monospace;
