@@ -248,12 +248,14 @@ function refresh(opts) {
       renderBudget(s.spent.tokens, s.meta.budget.tokens);
       renderLiveStrip();
       noteDataSig(s.dataSig);
-      var ab = document.getElementById('apprBtn');
-      if (ab) {
-        ab.textContent = s.pendingApprovals ? '\\u2713 Approvals (' + s.pendingApprovals + ')' : '\\u2713 Approvals';
-        ab.style.color = s.pendingApprovals ? '#e879f9' : '';
-        ab.style.borderColor = s.pendingApprovals ? 'rgba(217,70,239,0.5)' : '';
-      }
+      var apprLabel = s.pendingApprovals ? '\\u2713 Approvals (' + s.pendingApprovals + ')' : '\\u2713 Approvals';
+      var apprColor = s.pendingApprovals ? '#e879f9' : '';
+      var apprBorder = s.pendingApprovals ? 'rgba(217,70,239,0.5)' : '';
+      coToolButtons('approvals').forEach(function (ab) {
+        ab.textContent = apprLabel;
+        ab.style.color = apprColor;
+        ab.style.borderColor = apprBorder;
+      });
       var pb = document.getElementById('pauseBtn');
       if (pb) {
         var paused = !!s.meta.paused;

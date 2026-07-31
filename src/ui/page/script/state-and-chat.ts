@@ -3,16 +3,111 @@ export const STATE_AND_CHAT = `var view = 'home';
 var companySlug = null;
 var lastDataSigByCompany = {};
 
-function markDataFresh(on) {
-  var btn = document.getElementById('dataBtn');
-  if (!btn) return;
-  if (on) {
-    btn.classList.add('data-fresh');
-    btn.title = 'New data arrived \\u2014 open to inspect';
-  } else {
-    btn.classList.remove('data-fresh');
-    btn.title = '';
+var CO_TOOL_ORDER = ['grant', 'data', 'approvals', 'checkins', 'schedule'];
+var CO_TOOL_DEFS = {
+  grant: { label: '\\uff0b Grant', run: 'grantTokens()' },
+  data: { label: 'Data', run: 'openDbBrowser()' },
+  approvals: { label: 'Approvals', run: 'openApprovals()' },
+  checkins: { label: 'Check-ins', run: 'openCheckins()' },
+  schedule: { label: 'Schedule', run: 'openSchedule()' }
+};
+var CO_PINNED_KEY = 'aiCompanyOsCoPinned';
+var DEFAULT_CO_PINNED = ['grant'];
+
+function loadCoPinned() {
+  var raw = null;
+  try { raw = localStorage.getItem(CO_PINNED_KEY); } catch (e) {}
+  if (raw == null) return DEFAULT_CO_PINNED.slice();
+  try {
+    var parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_CO_PINNED.slice();
+    return CO_TOOL_ORDER.filter(function (id) { return parsed.indexOf(id) >= 0; });
+  } catch (e) {
+    return DEFAULT_CO_PINNED.slice();
   }
+}
+
+function saveCoPinned(ids) {
+  try { localStorage.setItem(CO_PINNED_KEY, JSON.stringify(ids)); } catch (e) {}
+}
+
+function coToolButtons(id) {
+  return Array.prototype.slice.call(document.querySelectorAll('[data-co-tool="' + id + '"]'));
+}
+
+function markDataFresh(on) {
+  coToolButtons('data').forEach(function (btn) {
+    if (on) {
+      btn.classList.add('data-fresh');
+      btn.title = 'New data arrived \\u2014 open to inspect';
+    } else {
+      btn.classList.remove('data-fresh');
+      btn.title = '';
+    }
+  });
+}
+
+function syncCoToolPinButtons() {
+  var pinned = loadCoPinned();
+  document.querySelectorAll('.co-tools-row[data-tool]').forEach(function (row) {
+    var id = row.getAttribute('data-tool');
+    var pin = row.querySelector('.co-tools-pin');
+    if (!pin || !id) return;
+    var on = pinned.indexOf(id) >= 0;
+    pin.setAttribute('aria-pressed', on ? 'true' : 'false');
+    var label = (CO_TOOL_DEFS[id] && CO_TOOL_DEFS[id].label) || id;
+    pin.title = on ? ('Unpin ' + label.replace(/^\\uff0b\\s*/, '')) : ('Pin ' + label.replace(/^\\uff0b\\s*/, ''));
+    pin.setAttribute('aria-label', pin.title);
+  });
+}
+
+function renderCoPinnedTools() {
+  var host = document.getElementById('coPinnedTools');
+  if (!host) return;
+  var prevFresh = !!document.querySelector('[data-co-tool="data"].data-fresh');
+  var apprText = null;
+  var apprColor = '';
+  var apprBorder = '';
+  var prevAppr = document.querySelector('[data-co-tool="approvals"]');
+  if (prevAppr) {
+    apprText = prevAppr.textContent;
+    apprColor = prevAppr.style.color || '';
+    apprBorder = prevAppr.style.borderColor || '';
+  }
+  host.innerHTML = '';
+  loadCoPinned().forEach(function (id) {
+    var def = CO_TOOL_DEFS[id];
+    if (!def) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'grant-btn';
+    btn.setAttribute('data-co-tool', id);
+    btn.setAttribute('onclick', def.run);
+    btn.textContent = def.label;
+    if (id === 'approvals' && apprText) {
+      btn.textContent = apprText;
+      btn.style.color = apprColor;
+      btn.style.borderColor = apprBorder;
+    }
+    if (id === 'data' && prevFresh) {
+      btn.classList.add('data-fresh');
+      btn.title = 'New data arrived \\u2014 open to inspect';
+    }
+    host.appendChild(btn);
+  });
+  syncCoToolPinButtons();
+}
+
+function toggleCoToolPin(id, e) {
+  if (e) e.stopPropagation();
+  if (!CO_TOOL_DEFS[id]) return;
+  var pinned = loadCoPinned();
+  var i = pinned.indexOf(id);
+  if (i >= 0) pinned.splice(i, 1);
+  else pinned.push(id);
+  pinned = CO_TOOL_ORDER.filter(function (k) { return pinned.indexOf(k) >= 0; });
+  saveCoPinned(pinned);
+  renderCoPinnedTools();
 }
 
 function toggleCoTools(e) {

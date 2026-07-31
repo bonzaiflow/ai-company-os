@@ -71,6 +71,9 @@ section.sidebar { background: var(--surface); padding: 0; display: flex; flex-di
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
   margin-bottom: 0.85rem;
 }
+.co-pinned {
+  display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: flex-end; justify-content: flex-end;
+}
 .co-tools { position: relative; }
 .co-tools-toggle {
   font-size: 0.7rem; padding: 0.24rem 0.75rem; border-radius: 999px;
@@ -81,14 +84,39 @@ section.sidebar { background: var(--surface); padding: 0; display: flex; flex-di
 }
 .co-tools-menu {
   position: absolute; right: 0; top: calc(100% + 0.35rem); z-index: 20;
-  display: flex; flex-direction: column; gap: 0.35rem; min-width: 9.5rem;
+  display: flex; flex-direction: column; gap: 0.3rem; min-width: 11.5rem;
   padding: 0.55rem; border-radius: 12px; border: 1px solid var(--border);
   background: var(--surface); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
 }
 .co-tools-menu[hidden] { display: none !important; }
-.co-tools-menu .grant-btn {
-  margin: 0; width: 100%; text-align: left; border-radius: 8px;
+.co-tools-row {
+  display: flex; align-items: center; gap: 0.25rem;
 }
+.co-tools-menu .grant-btn {
+  margin: 0; flex: 1; width: auto; text-align: left; border-radius: 8px;
+}
+.co-tools-pin {
+  flex-shrink: 0; width: 1.7rem; height: 1.7rem; margin: 0; padding: 0;
+  border: 1px solid transparent; border-radius: 8px; background: transparent;
+  color: var(--muted); display: inline-flex; align-items: center; justify-content: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.co-tools-pin::before {
+  content: ""; width: 0.7rem; height: 0.7rem;
+  background: currentColor;
+  clip-path: polygon(50% 0, 85% 35%, 70% 35%, 70% 75%, 50% 100%, 30% 75%, 30% 35%, 15% 35%);
+  opacity: 0.55;
+}
+.co-tools-pin:hover {
+  color: var(--text); border-color: var(--border); background: var(--bg);
+}
+.co-tools-pin:hover::before { opacity: 0.9; }
+.co-tools-pin[aria-pressed="true"] {
+  color: var(--blue-bright);
+  border-color: color-mix(in srgb, var(--blue) 40%, var(--border));
+  background: color-mix(in srgb, var(--blue) 12%, var(--bg));
+}
+.co-tools-pin[aria-pressed="true"]::before { opacity: 1; }
 .co-tools-danger { color: #f87171 !important; border-color: rgba(248, 113, 113, 0.35) !important; }
 
 /* Plan studio */

@@ -55,15 +55,33 @@ export const COMPANY = `<main id="viewCompany" class="agent-open">
         </div>
         <div class="bars" id="bars">
           <div class="bar" id="tokWrap">Tokens remaining <span class="num" id="tokTxt"></span><div class="track"><div class="fill" id="tokBar"></div></div></div>
-          <button class="grant-btn" onclick="grantTokens()">＋ Grant</button>
+          <div class="co-pinned" id="coPinnedTools"></div>
           <div class="co-tools">
             <button type="button" class="co-tools-toggle" id="coToolsToggle" onclick="toggleCoTools(event)" aria-expanded="false" aria-controls="coToolsMenu">More</button>
             <div class="co-tools-menu" id="coToolsMenu" hidden>
-              <button class="grant-btn" id="dataBtn" onclick="openDbBrowser()">Data</button>
-              <button class="grant-btn" id="apprBtn" onclick="openApprovals()">Approvals</button>
-              <button class="grant-btn" onclick="openCheckins()">Check-ins</button>
-              <button class="grant-btn" onclick="openSchedule()">Schedule</button>
-              <button class="grant-btn co-tools-danger" onclick="deleteCurrentCompany()" title="Delete this company">Delete</button>
+              <div class="co-tools-row" data-tool="grant">
+                <button type="button" class="grant-btn" data-co-tool="grant" onclick="grantTokens()">＋ Grant</button>
+                <button type="button" class="co-tools-pin" onclick="toggleCoToolPin('grant', event)" title="Pin Grant" aria-label="Pin Grant" aria-pressed="false"></button>
+              </div>
+              <div class="co-tools-row" data-tool="data">
+                <button type="button" class="grant-btn" data-co-tool="data" onclick="openDbBrowser()">Data</button>
+                <button type="button" class="co-tools-pin" onclick="toggleCoToolPin('data', event)" title="Pin Data" aria-label="Pin Data" aria-pressed="false"></button>
+              </div>
+              <div class="co-tools-row" data-tool="approvals">
+                <button type="button" class="grant-btn" data-co-tool="approvals" onclick="openApprovals()">Approvals</button>
+                <button type="button" class="co-tools-pin" onclick="toggleCoToolPin('approvals', event)" title="Pin Approvals" aria-label="Pin Approvals" aria-pressed="false"></button>
+              </div>
+              <div class="co-tools-row" data-tool="checkins">
+                <button type="button" class="grant-btn" data-co-tool="checkins" onclick="openCheckins()">Check-ins</button>
+                <button type="button" class="co-tools-pin" onclick="toggleCoToolPin('checkins', event)" title="Pin Check-ins" aria-label="Pin Check-ins" aria-pressed="false"></button>
+              </div>
+              <div class="co-tools-row" data-tool="schedule">
+                <button type="button" class="grant-btn" data-co-tool="schedule" onclick="openSchedule()">Schedule</button>
+                <button type="button" class="co-tools-pin" onclick="toggleCoToolPin('schedule', event)" title="Pin Schedule" aria-label="Pin Schedule" aria-pressed="false"></button>
+              </div>
+              <div class="co-tools-row">
+                <button type="button" class="grant-btn co-tools-danger" onclick="deleteCurrentCompany()" title="Delete this company">Delete</button>
+              </div>
             </div>
           </div>
         </div>
