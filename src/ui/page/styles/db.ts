@@ -31,13 +31,13 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
 .dbx-foot .sp { flex: 1; }
 .pgbtn { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 0.25rem 0.6rem; font-size: 0.75rem; cursor: pointer; }
 .pgbtn:disabled { opacity: 0.4; cursor: default; }
-.dbsql-prompt { margin-top: 0.65rem; margin-bottom: 0.85rem; }
-.dbsql-label {
-  font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--muted); margin: 0.45rem 0 0.3rem;
+.dbsql-tabs {
+  padding: 0.65rem 0 0.55rem; margin: 0.25rem 0 0.15rem; border-bottom: 1px solid var(--border);
 }
+.dbsql-pane { margin-top: 0.65rem; }
+.dbsql-pane[hidden] { display: none !important; }
 .dbsql-ask {
-  width: 100%; min-height: 52px; font: inherit; resize: vertical;
+  width: 100%; min-height: 72px; font: inherit; resize: vertical;
   background: var(--bg); color: var(--text); border: 1px solid var(--border);
   border-radius: 8px; padding: 0.45rem 0.6rem; line-height: 1.4;
 }
@@ -47,7 +47,11 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
   margin-top: 0.4rem;
 }
 .dbsql-actions .btn:disabled { opacity: 0.5; cursor: default; }
-.dbsql { width: 100%; height: 72px; font-family: "JetBrains Mono", monospace; font-size: 0.75rem; resize: vertical; background: var(--bg); }
+.dbsql {
+  width: 100%; height: 96px; font-family: "JetBrains Mono", monospace; font-size: 0.75rem;
+  resize: vertical; background: var(--bg);
+}
+.dbsql-out { margin-top: 0.75rem; }
 .rowdetail { margin-top: 0.6rem; border: 1px solid var(--border); border-radius: 8px; padding: 0.7rem 0.85rem; background: var(--bg); }
 .rowdetail h4 { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.5rem; }
 .rowdetail .kv { display: grid; grid-template-columns: 130px 1fr; gap: 0.3rem 0.8rem; font-size: 0.76rem; }

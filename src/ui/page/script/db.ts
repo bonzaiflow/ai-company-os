@@ -186,6 +186,28 @@ function showRowDetail(columns, row) {
 }
 
 // raw read-only SQL escape hatch (kept from the old browser)
+function setDbSqlTab(which) {
+  var promptTab = document.getElementById('dbSqlTabPrompt');
+  var sqlTab = document.getElementById('dbSqlTabSql');
+  var promptPane = document.getElementById('dbSqlPanePrompt');
+  var sqlPane = document.getElementById('dbSqlPaneSql');
+  if (!promptTab || !sqlTab || !promptPane || !sqlPane) return;
+  var promptOn = which === 'prompt';
+  promptTab.className = 'tab' + (promptOn ? ' on' : '');
+  sqlTab.className = 'tab' + (promptOn ? '' : ' on');
+  if (promptOn) {
+    promptPane.removeAttribute('hidden');
+    sqlPane.setAttribute('hidden', '');
+    var p = document.getElementById('dbSqlPrompt');
+    if (p) p.focus();
+  } else {
+    sqlPane.removeAttribute('hidden');
+    promptPane.setAttribute('hidden', '');
+    var ta = document.getElementById('dbSql');
+    if (ta) ta.focus();
+  }
+}
+
 function openDbSql() {
   showModal({
     eyebrow: 'Data \\u00b7 read-only SQL',
@@ -196,38 +218,48 @@ function openDbSql() {
       b.onclick = function () { renderDb(); loadDbPage(); };
       body.appendChild(b);
 
-      var promptBox = el('div', 'dbsql-prompt');
-      promptBox.appendChild(el('div', 'dbsql-label', 'Prompt'));
+      var tabs = el('div', 'tabs dbsql-tabs');
+      var promptTab = el('button', 'tab on', 'Prompt'); promptTab.id = 'dbSqlTabPrompt'; promptTab.type = 'button';
+      promptTab.onclick = function () { setDbSqlTab('prompt'); };
+      var sqlTab = el('button', 'tab', 'SQL'); sqlTab.id = 'dbSqlTabSql'; sqlTab.type = 'button';
+      sqlTab.onclick = function () { setDbSqlTab('sql'); };
+      tabs.appendChild(promptTab); tabs.appendChild(sqlTab);
+      body.appendChild(tabs);
+
+      var promptPane = el('div', 'dbsql-pane'); promptPane.id = 'dbSqlPanePrompt';
       var prompt = el('textarea', 'dbsql-ask'); prompt.id = 'dbSqlPrompt';
       prompt.placeholder = 'Describe what you want to see\\u2026';
-      prompt.rows = 2;
+      prompt.rows = 3;
       prompt.onkeydown = function (e) {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); promptDbSql(); }
       };
-      promptBox.appendChild(prompt);
+      promptPane.appendChild(prompt);
       var promptRow = el('div', 'dbsql-actions');
       var ask = el('button', 'btn', 'Write SQL'); ask.id = 'dbSqlAskBtn';
       ask.title = 'Generate a read-only query with the execution (or agents) model';
       ask.onclick = promptDbSql;
       promptRow.appendChild(ask);
       promptRow.appendChild(el('span', 'muted', 'execution / agents model \\u00b7 \\u2318\\u21a9'));
-      promptBox.appendChild(promptRow);
+      promptPane.appendChild(promptRow);
       var promptStatus = el('div', 'muted'); promptStatus.id = 'dbSqlPromptStatus';
       promptStatus.style.marginTop = '0.35rem';
-      promptBox.appendChild(promptStatus);
-      body.appendChild(promptBox);
+      promptPane.appendChild(promptStatus);
+      body.appendChild(promptPane);
 
-      body.appendChild(el('div', 'dbsql-label', 'SQL'));
+      var sqlPane = el('div', 'dbsql-pane'); sqlPane.id = 'dbSqlPaneSql';
+      sqlPane.setAttribute('hidden', '');
       var ta = el('textarea', 'dbsql'); ta.id = 'dbSql';
       ta.value = 'SELECT * FROM "' + dbState.table + '" LIMIT 50';
       ta.onkeydown = function (e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runDbSql(); } };
-      body.appendChild(ta);
+      sqlPane.appendChild(ta);
       var runRow = el('div', 'dbsql-actions');
       var run = el('button', 'btn', 'Run (\\u2318\\u21a9)'); run.onclick = runDbSql;
       runRow.appendChild(run);
       runRow.appendChild(el('span', 'muted', 'SELECT / PRAGMA / WITH only'));
-      body.appendChild(runRow);
-      var out = el('div'); out.id = 'dbSqlOut'; body.appendChild(out);
+      sqlPane.appendChild(runRow);
+      body.appendChild(sqlPane);
+
+      var out = el('div', 'dbsql-out'); out.id = 'dbSqlOut'; body.appendChild(out);
     }
   });
 }
@@ -268,7 +300,7 @@ function promptDbSql() {
         + (d.model ? '/' + d.model : '')
         + ' \\u2014 review, then Run';
     }
-    ta.focus();
+    setDbSqlTab('sql');
   }).catch(function (e) {
     if (askBtn) askBtn.disabled = false;
     if (status) status.textContent = 'failed: ' + e;
