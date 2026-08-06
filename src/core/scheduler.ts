@@ -2,6 +2,7 @@ import path from "node:path";
 import type { AiCompanyOsConfig, RecurringTask } from "../types.js";
 import { nowIso, readJson, writeJson } from "../util.js";
 import { runCheckin } from "./checkin.js";
+import { pollConnectors } from "./connectors/index.js";
 import { runLoop } from "./runtime.js";
 import { Company } from "./store.js";
 
@@ -50,6 +51,18 @@ export async function wakeCompany(
   if (meta.paused) return;
 
   spawnDueRecurring(co, log);
+
+  // Always poll inbound connectors when configured so mail/Telegram become
+  // INBOX + tasks even if the wake schedule isn't due yet.
+  if (meta.connectors && (meta.connectors.email?.imap || meta.connectors.telegram)) {
+    try {
+      const polled = await pollConnectors(co);
+      if (polled.ingested) log(`  ✉ ${slug}: ingested ${polled.ingested} inbound message(s)`);
+      for (const err of polled.errors) log(`  ✗ ${slug} connector: ${err}`);
+    } catch (e) {
+      log(`  ✗ ${slug} connector poll: ${(e as Error).message}`);
+    }
+  }
 
   const sched = meta.schedule;
   if (sched?.active && due(sched.lastWakeAt, sched.everyMinutes * 60_000)) {

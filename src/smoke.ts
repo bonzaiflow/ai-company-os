@@ -8,8 +8,10 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
+import { ingestInbound } from "./core/connectors/index.js";
 import { runLoop } from "./core/runtime.js";
 import { scaffoldCompany } from "./core/store.js";
+import { resolveToolName, toolsFor } from "./core/tools.js";
 import type { Plan } from "./types.js";
 import { writeJson } from "./util.js";
 
@@ -86,5 +88,24 @@ for (const t of ["company.launched", "task.created", "queue.enqueue", "queue.deq
   assert.ok(types.includes(t), `audit contains ${t}`);
 }
 assert.ok(co.spent().tokens > 0 && co.spent().toolCalls === 4, "budget counters tracked");
+
+// ---- connectors: ingest + tool registry (no live SMTP/Telegram) ----
+assert.equal(resolveToolName("tg"), "telegram");
+assert.equal(resolveToolName("mail"), "email");
+assert.ok(toolsFor(["telegram"]).some((t) => t.name === "telegram"), "telegram tool registered");
+const beforeQ = co.queue().length;
+const ing = ingestInbound(co, {
+  channel: "webhook",
+  from: "webhook:smoke",
+  subject: "smoke inbound",
+  body: "hello from smoke",
+  externalId: "smoke-1",
+  createTask: true,
+});
+assert.equal(ing.agent, "Boss");
+assert.ok(ing.taskId, "inbound created a task");
+assert.ok(co.queue().length === beforeQ + 1, "inbound task enqueued");
+const unread = fs.readdirSync(path.join(co.dir, "agents", "Boss", "INBOX")).filter((f) => f.endsWith(".md"));
+assert.ok(unread.length >= 1, "inbound landed in chief INBOX");
 
 console.log("\nSMOKE TEST PASSED ✓  (workspace: " + root + ")");
