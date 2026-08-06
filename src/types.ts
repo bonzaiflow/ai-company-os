@@ -99,6 +99,64 @@ export interface RecurringTask {
   lastCreatedAt?: string;
 }
 
+/** SMTP settings — password lives in the named env var, never in company.json. */
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  secure?: boolean;
+  user: string;
+  passEnv: string;
+}
+
+/** IMAP settings for inbound email polling. */
+export interface ImapConfig {
+  host: string;
+  port: number;
+  secure?: boolean;
+  user: string;
+  passEnv: string;
+  mailbox?: string;
+}
+
+export interface EmailConnectorConfig {
+  from: string;
+  smtp: SmtpConfig;
+  imap?: ImapConfig;
+  /** agent name that receives inbound mail; defaults to chief */
+  routeTo?: string;
+}
+
+export interface TelegramConnectorConfig {
+  botTokenEnv: string;
+  /** empty = allow any chat (dev); set in production */
+  allowedChatIds?: string[];
+  /** agent name that receives inbound messages; defaults to chief */
+  routeTo?: string;
+}
+
+export interface WebhookConnectorConfig {
+  inboundSecretEnv: string;
+  /** agent name that receives inbound webhooks; defaults to chief */
+  routeTo?: string;
+  /** optional host allowlist for outbound POST (e.g. ["hooks.example.com"]) */
+  allowedHosts?: string[];
+}
+
+/** Per-company external communication channels. Secrets via *Env fields only. */
+export interface ConnectorsConfig {
+  email?: EmailConnectorConfig;
+  telegram?: TelegramConnectorConfig;
+  webhook?: WebhookConnectorConfig;
+}
+
+/** Durable cursor / status for connector polling (companies/<slug>/connectors-state.json). */
+export interface ConnectorsState {
+  lastPollAt?: string;
+  lastError?: string;
+  email?: { lastUid?: number };
+  telegram?: { lastUpdateId?: number };
+}
+
 export interface CompanyMeta {
   name: string;
   slug: string;
@@ -122,6 +180,8 @@ export interface CompanyMeta {
   policies?: { approveTools?: string[] };
   /** numeric goals the chief auto-replans toward when the queue empties */
   targets?: CompanyTarget[];
+  /** external channels: email, telegram, webhook (secrets via env var names) */
+  connectors?: ConnectorsConfig;
 }
 
 export interface AuditEvent {

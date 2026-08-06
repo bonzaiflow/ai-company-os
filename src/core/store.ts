@@ -348,14 +348,29 @@ export class Company {
 
   // ---- messages (INBOX/OUTBOX) ----
 
-  sendMessage(from: string, to: string, subject: string, content: string, taskId?: string): void {
+  sendMessage(
+    from: string,
+    to: string,
+    subject: string,
+    content: string,
+    taskId?: string,
+    extras?: { channel?: string; externalId?: string }
+  ): void {
     const inbox = path.join(this.agentDir(to), "INBOX");
     ensureDir(inbox);
     const file = path.join(inbox, `${taskId ?? "MSG"}-${Date.now()}.md`);
     fs.writeFileSync(
       file,
       serializeFrontmatter(
-        { from, to, subject, taskId: taskId ?? "", sentAt: nowIso() },
+        {
+          from,
+          to,
+          subject,
+          taskId: taskId ?? "",
+          sentAt: nowIso(),
+          ...(extras?.channel ? { channel: extras.channel } : {}),
+          ...(extras?.externalId ? { externalId: extras.externalId } : {}),
+        },
         content
       )
     );
