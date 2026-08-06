@@ -79,6 +79,10 @@ export const COMPANY = `<main id="viewCompany" class="agent-open">
                 <button type="button" class="grant-btn" data-co-tool="schedule" onclick="openSchedule()">Schedule</button>
                 <button type="button" class="co-tools-pin" onclick="toggleCoToolPin('schedule', event)" title="Pin Schedule" aria-label="Pin Schedule" aria-pressed="false"></button>
               </div>
+              <div class="co-tools-row" data-tool="connectors">
+                <button type="button" class="grant-btn" data-co-tool="connectors" onclick="openConnectors()">Connectors</button>
+                <button type="button" class="co-tools-pin" onclick="toggleCoToolPin('connectors', event)" title="Pin Connectors" aria-label="Pin Connectors" aria-pressed="false"></button>
+              </div>
               <div class="co-tools-row">
                 <button type="button" class="grant-btn co-tools-danger" onclick="deleteCurrentCompany()" title="Delete this company">Delete</button>
               </div>
