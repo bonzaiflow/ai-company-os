@@ -1,5 +1,5 @@
-/** Pause, approvals, check-ins, schedule */
-export const GOVERNANCE = `// ---------- governance: pause / approvals / check-ins / schedule ----------
+/** Pause, approvals, check-ins, schedule, connectors */
+export const GOVERNANCE = `// ---------- governance: pause / approvals / check-ins / schedule / connectors ----------
 
 function togglePause() {
   if (!state) return;
@@ -640,6 +640,266 @@ function openSchedule() {
       body.appendChild(form);
     }
   });
+}
+
+function fieldInput(label, value, opts) {
+  opts = opts || {};
+  var wrap = el('div', 'schedule-field');
+  wrap.appendChild(el('div', 'k', label));
+  var inp = el('input');
+  inp.type = opts.type || 'text';
+  inp.className = 'mono';
+  inp.value = value == null ? '' : String(value);
+  if (opts.placeholder) inp.placeholder = opts.placeholder;
+  if (opts.aria) inp.setAttribute('aria-label', opts.aria);
+  wrap.appendChild(inp);
+  if (opts.hint) wrap.appendChild(el('div', 'hint', opts.hint));
+  wrap._input = inp;
+  return wrap;
+}
+
+function openConnectors() {
+  if (!companySlug) return;
+  fetch('/api/connectors?company=' + encodeURIComponent(companySlug))
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.error) { showToast(data.error, 'err'); return; }
+      var c = data.connectors || {};
+      var email = c.email || {};
+      var smtp = email.smtp || {};
+      var imap = email.imap || {};
+      var tg = c.telegram || {};
+      var wh = c.webhook || {};
+      var secrets = data.secrets || {};
+      var st = data.state || {};
+
+      showModal({
+        eyebrow: 'Channels',
+        title: 'Connectors',
+        accent: '#38bdf8',
+        body: function (body) {
+          var callout = el('div', 'modal-callout');
+          var copy = el('div', 'modal-callout-copy');
+          copy.appendChild(el('div', 'modal-callout-title', 'External messaging'));
+          copy.appendChild(el('div', 'modal-callout-sub',
+            'Secrets stay in env vars (names below). Inbound mail/Telegram are polled by the daemon; webhooks hit the URL below.'));
+          callout.appendChild(copy);
+          if (st.lastPollAt) {
+            callout.appendChild(el('span', 'pill neutral', 'polled ' + fmtTs(st.lastPollAt)));
+          }
+          if (st.lastError) {
+            callout.appendChild(el('span', 'pill failed', 'error'));
+          }
+          body.appendChild(callout);
+          if (st.lastError) {
+            body.appendChild(el('div', 'muted', st.lastError));
+          }
+
+          var form = el('div', 'schedule-form');
+
+          body.appendChild(el('h2', 'sec', 'Email (SMTP + IMAP)'));
+          var emailFields = el('div', 'schedule-fields');
+          var fromF = fieldInput('From', email.from || '', { placeholder: 'bot@example.com' });
+          var smtpHost = fieldInput('SMTP host', smtp.host || '', { placeholder: 'smtp.example.com' });
+          var smtpPort = fieldInput('SMTP port', smtp.port || 587, { hint: '587 or 465' });
+          var smtpUser = fieldInput('SMTP user', smtp.user || '', {});
+          var smtpPass = fieldInput('SMTP pass env', smtp.passEnv || '', {
+            placeholder: 'SMTP_PASS',
+            hint: secrets.emailSmtp ? 'env is set' : 'env name for the password'
+          });
+          var smtpSecure = fieldInput('SMTP secure', smtp.secure ? 'true' : 'false', {
+            hint: 'true for port 465'
+          });
+          var imapHost = fieldInput('IMAP host', imap.host || '', { placeholder: 'optional for read' });
+          var imapPort = fieldInput('IMAP port', imap.port || 993, {});
+          var imapUser = fieldInput('IMAP user', imap.user || '', {});
+          var imapPass = fieldInput('IMAP pass env', imap.passEnv || smtp.passEnv || 'SMTP_PASS', {
+            hint: secrets.emailImap ? 'env is set' : 'env not set yet'
+          });
+          var emailRoute = fieldInput('Route inbound to', email.routeTo || '', {
+            placeholder: '(chief)',
+            hint: 'agent name; blank = chief'
+          });
+          [fromF, smtpHost, smtpPort, smtpUser, smtpPass, smtpSecure, imapHost, imapPort, imapUser, imapPass, emailRoute]
+            .forEach(function (f) { emailFields.appendChild(f); });
+          form.appendChild(emailFields);
+
+          body.appendChild(el('h2', 'sec', 'Telegram (bot)'));
+          var tgFields = el('div', 'schedule-fields');
+          var tgToken = fieldInput('Bot token env', tg.botTokenEnv || '', {
+            placeholder: 'TELEGRAM_BOT_TOKEN',
+            hint: (tg.botTokenEnv ? (secrets.telegram ? 'env is set' : 'env not set yet') : 'leave blank to disable')
+          });
+          var tgChats = fieldInput('Allowed chat ids', (tg.allowedChatIds || []).join(', '), {
+            hint: 'comma-separated; empty = any (dev only)'
+          });
+          var tgRoute = fieldInput('Route inbound to', tg.routeTo || '', {
+            placeholder: '(chief)'
+          });
+          [tgToken, tgChats, tgRoute].forEach(function (f) { tgFields.appendChild(f); });
+          form.appendChild(tgFields);
+
+          body.appendChild(el('h2', 'sec', 'Webhook'));
+          var whFields = el('div', 'schedule-fields');
+          var whSecret = fieldInput('Inbound secret env', wh.inboundSecretEnv || '', {
+            placeholder: 'WEBHOOK_SECRET',
+            hint: (wh.inboundSecretEnv ? (secrets.webhook ? 'env is set' : 'env not set yet') : 'leave blank to disable')
+          });
+          var whHosts = fieldInput('Outbound allowed hosts', (wh.allowedHosts || []).join(', '), {
+            hint: 'optional allowlist, e.g. hooks.example.com'
+          });
+          var whRoute = fieldInput('Route inbound to', wh.routeTo || '', { placeholder: '(chief)' });
+          [whSecret, whHosts, whRoute].forEach(function (f) { whFields.appendChild(f); });
+          form.appendChild(whFields);
+
+          var hookBox = el('div', 'modal-callout');
+          var hookCopy = el('div', 'modal-callout-copy');
+          hookCopy.appendChild(el('div', 'modal-callout-title', 'Inbound URL'));
+          var hookUrl = location.origin + (data.hookPath || ('/api/hooks/' + companySlug));
+          hookCopy.appendChild(el('div', 'modal-callout-sub',
+            'POST JSON { text, subject?, from? } with header x-connector-secret (or ?secret=)'));
+          hookBox.appendChild(hookCopy);
+          var hookCode = el('code', 'mono', hookUrl);
+          hookCode.style.cssText = 'display:block;font-size:0.72rem;word-break:break-all;margin-top:0.4rem';
+          hookBox.appendChild(hookCode);
+          form.appendChild(hookBox);
+
+          var gateRow = el('div', 'schedule-field');
+          var gateLab = el('label');
+          gateLab.style.cssText = 'display:flex;gap:0.5rem;align-items:center;font-size:0.8rem';
+          var gate = document.createElement('input');
+          gate.type = 'checkbox';
+          gate.checked = (data.approveTools || []).some(function (t) {
+            return t === 'email' || t === 'telegram' || t === 'webhook';
+          });
+          gateLab.appendChild(gate);
+          gateLab.appendChild(document.createTextNode('Gate outbound email/telegram/webhook via Approvals'));
+          gateRow.appendChild(gateLab);
+          form.appendChild(gateRow);
+
+          var status = el('div', 'muted');
+          form.appendChild(status);
+
+          function collect() {
+            var chats = tgChats._input.value.split(/[,\\s]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+            var hosts = whHosts._input.value.split(/[,\\s]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+            var connectors = {};
+            if (smtpHost._input.value.trim() && smtpUser._input.value.trim()) {
+              var passEnvName = smtpPass._input.value.trim() || 'SMTP_PASS';
+              connectors.email = {
+                from: fromF._input.value.trim() || smtpUser._input.value.trim(),
+                smtp: {
+                  host: smtpHost._input.value.trim(),
+                  port: Number(smtpPort._input.value) || 587,
+                  secure: String(smtpSecure._input.value).toLowerCase() === 'true',
+                  user: smtpUser._input.value.trim(),
+                  passEnv: passEnvName
+                },
+                routeTo: emailRoute._input.value.trim() || undefined
+              };
+              if (imapHost._input.value.trim()) {
+                connectors.email.imap = {
+                  host: imapHost._input.value.trim(),
+                  port: Number(imapPort._input.value) || 993,
+                  secure: true,
+                  user: imapUser._input.value.trim() || smtpUser._input.value.trim(),
+                  passEnv: imapPass._input.value.trim() || passEnvName
+                };
+              }
+            }
+            if (tgToken._input.value.trim()) {
+              connectors.telegram = {
+                botTokenEnv: tgToken._input.value.trim(),
+                allowedChatIds: chats.length ? chats : undefined,
+                routeTo: tgRoute._input.value.trim() || undefined
+              };
+            }
+            if (whSecret._input.value.trim()) {
+              connectors.webhook = {
+                inboundSecretEnv: whSecret._input.value.trim(),
+                allowedHosts: hosts.length ? hosts : undefined,
+                routeTo: whRoute._input.value.trim() || undefined
+              };
+            }
+            return connectors;
+          }
+
+          var actions = el('div', 'schedule-actions');
+          var save = el('button', 'btn', 'Save connectors');
+          save.onclick = function () {
+            save.disabled = true;
+            status.textContent = 'Saving\\u2026';
+            fetch('/api/connectors', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                company: companySlug,
+                connectors: collect(),
+                gateOutbound: gate.checked
+              })
+            }).then(function (r) { return r.json(); }).then(function (d) {
+              if (d.error) throw new Error(d.error);
+              showToast('Connectors saved', 'ok');
+              openConnectors();
+              refresh();
+            }).catch(function (e) {
+              status.textContent = e.message || String(e);
+              save.disabled = false;
+            });
+          };
+          actions.appendChild(save);
+
+          var pollBtn = el('button', 'btn', 'Poll now');
+          pollBtn.onclick = function () {
+            pollBtn.disabled = true;
+            fetch('/api/connectors/poll', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ company: companySlug })
+            }).then(function (r) { return r.json(); }).then(function (d) {
+              showToast('Ingested ' + (d.ingested || 0) + ' message(s)', d.errors && d.errors.length ? 'err' : 'ok');
+              openConnectors();
+              refresh();
+            }).catch(function (e) {
+              showToast(String(e), 'err');
+              pollBtn.disabled = false;
+            });
+          };
+          actions.appendChild(pollBtn);
+
+          function testKind(kind, extra) {
+            return function () {
+              status.textContent = 'Testing ' + kind + '\\u2026';
+              fetch('/api/connectors/test', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(Object.assign({ company: companySlug, kind: kind }, extra || {}))
+              }).then(function (r) { return r.json(); }).then(function (d) {
+                if (d.error) throw new Error(d.error);
+                status.textContent = d.detail || 'ok';
+                showToast(kind + ' test ok', 'ok');
+              }).catch(function (e) {
+                status.textContent = e.message || String(e);
+                showToast(e.message || String(e), 'err');
+              });
+            };
+          }
+          var testEmail = el('button', 'btn', 'Test email');
+          testEmail.onclick = testKind('email');
+          actions.appendChild(testEmail);
+          var testTg = el('button', 'btn', 'Test telegram');
+          testTg.onclick = function () {
+            var chatId = (tgChats._input.value.split(/[,\\s]+/).filter(Boolean)[0]) || '';
+            testKind('telegram', { chatId: chatId })();
+          };
+          actions.appendChild(testTg);
+
+          form.appendChild(actions);
+          body.appendChild(form);
+        }
+      });
+    })
+    .catch(function (e) { showToast(String(e), 'err'); });
 }
 
 `;

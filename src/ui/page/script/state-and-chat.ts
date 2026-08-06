@@ -3,13 +3,14 @@ export const STATE_AND_CHAT = `var view = 'home';
 var companySlug = null;
 var lastDataSigByCompany = {};
 
-var CO_TOOL_ORDER = ['grant', 'data', 'approvals', 'checkins', 'schedule'];
+var CO_TOOL_ORDER = ['grant', 'data', 'approvals', 'checkins', 'schedule', 'connectors'];
 var CO_TOOL_DEFS = {
   grant: { label: '\\uff0b Grant', run: 'grantTokens()' },
   data: { label: 'Data', run: 'openDbBrowser()' },
   approvals: { label: 'Approvals', run: 'openApprovals()' },
   checkins: { label: 'Check-ins', run: 'openCheckins()' },
-  schedule: { label: 'Schedule', run: 'openSchedule()' }
+  schedule: { label: 'Schedule', run: 'openSchedule()' },
+  connectors: { label: 'Connectors', run: 'openConnectors()' }
 };
 var CO_PINNED_KEY = 'aiCompanyOsCoPinned';
 var DEFAULT_CO_PINNED = ['grant'];
