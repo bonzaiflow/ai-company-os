@@ -103,6 +103,24 @@ ai-company-os companies are built to run forever under owner control:
 
 See [ideas/positioning-vs-paperclip.md](ideas/positioning-vs-paperclip.md) for how this differs from Paperclip.
 
+## Connectors (email, Telegram, webhooks)
+
+Companies can talk to the outside world through **connectors** configured per company (`company.json` → `connectors`, or the **Connectors** panel in the company UI). Secrets stay in environment variables; config only stores the *names* of those vars (same pattern as `apiKeyEnv` for LLM providers). See [`.env.example`](.env.example).
+
+| Connector | Outbound tool | Inbound |
+|---|---|---|
+| **Email** | `email` (`op: send`) via SMTP | IMAP poll → agent INBOX + task |
+| **Telegram** | `telegram` (`op: send`) | Bot `getUpdates` poll → usually **chief** |
+| **Webhook** | `webhook` (`op: post`) | `POST /api/hooks/<slug>` with `x-connector-secret` |
+
+Inbound events become INBOX markdown (with `channel` / `externalId` frontmatter) and a high-priority task for `routeTo` (default: chief). The daemon polls email/Telegram on each wake; you can also **Poll now** from the UI.
+
+Outbound sends are network tools — assign them on agent profiles (planner allow-list includes `email`, `telegram`, `webhook`). Prefer gating them with `policies.approveTools: ["email","telegram","webhook"]` so the owner approves each send.
+
+Telegram tip: create a bot with BotFather, set `TELEGRAM_BOT_TOKEN`, put your chat id in `allowedChatIds`, give the chief the `telegram` tool, and message the bot — the next daemon wake (or Poll now) delivers it.
+
+Webhook tip: `curl -X POST http://localhost:4646/api/hooks/<slug> -H 'content-type: application/json' -H "x-connector-secret: $WEBHOOK_SECRET" -d '{"text":"hello","from":"zapier"}'`
+
 ## Skills
 
 `skills/<name>/SKILL.md` (claude-style) are copied into a company at launch and injected into the prompts of agents that list them. Bundled: `web-research`, `data-entry`, `delegation`, `reporting`. Your workspace `skills/` directory overrides bundled skills of the same name — manage it from the Skills view in the UI (inline editor, .zip/.md upload) or just drop folders in.
