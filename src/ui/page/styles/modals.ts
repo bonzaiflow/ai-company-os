@@ -254,4 +254,89 @@ export const MODALS = `.modal-backdrop {
 @keyframes spin { to { transform: rotate(360deg); } }
 .adot { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%; margin-right: 0.35rem; vertical-align: 0; }
 
+/* ── Connectors hub + per-channel editors ── */
+.conn-status {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.65rem;
+  margin-bottom: 0.9rem; font-size: 0.78rem; color: var(--muted);
+}
+.conn-grid {
+  display: grid; grid-template-columns: 1fr; gap: 0.65rem; margin-bottom: 1rem;
+}
+@media (min-width: 640px) {
+  .conn-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.conn-card {
+  display: flex; flex-direction: column; gap: 0.45rem; text-align: left;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+  padding: 0.85rem 0.9rem; cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s, background 0.15s;
+}
+.conn-card:hover {
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--border));
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--blue) 4%, var(--bg));
+}
+.conn-card-top {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;
+}
+.conn-card-name {
+  font-size: 0.92rem; font-weight: 600; letter-spacing: -0.02em; color: var(--text);
+}
+.conn-card-desc {
+  font-size: 0.75rem; color: var(--muted); line-height: 1.4; flex: 1;
+}
+.conn-card-meta {
+  font-family: "JetBrains Mono", monospace; font-size: 0.68rem; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.conn-card-cta {
+  font-size: 0.72rem; font-weight: 600; color: var(--link-strong); margin-top: 0.15rem;
+}
+.conn-foot {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem 1rem;
+  padding-top: 0.85rem; border-top: 1px solid var(--border);
+}
+.conn-foot label {
+  display: flex; align-items: center; gap: 0.45rem; font-size: 0.78rem; color: var(--muted);
+  cursor: pointer; user-select: none;
+}
+.conn-foot .schedule-actions { margin-left: auto; }
+.conn-editor { display: flex; flex-direction: column; gap: 0.85rem; }
+.conn-block {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+  padding: 0.85rem 0.95rem;
+}
+.conn-block-title {
+  font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); margin-bottom: 0.65rem;
+}
+.conn-fields {
+  display: grid; grid-template-columns: 1fr; gap: 0.7rem;
+}
+@media (min-width: 560px) {
+  .conn-fields.cols-2 { grid-template-columns: 1fr 1fr; }
+  .conn-fields.cols-2 .span-2 { grid-column: 1 / -1; }
+}
+.conn-field .k {
+  font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); margin-bottom: 0.3rem;
+}
+.conn-field input, .conn-field select {
+  width: 100%; font-family: "JetBrains Mono", monospace; font-size: 0.82rem;
+  padding: 0.45rem 0.6rem;
+}
+.conn-field .hint { color: var(--muted); font-size: 0.72rem; margin-top: 0.28rem; line-height: 1.35; }
+.conn-hook {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 0.65rem 0.75rem; margin-top: 0.35rem;
+}
+.conn-hook code {
+  flex: 1; min-width: 12rem; font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem; word-break: break-all; color: var(--text);
+}
+.conn-status-line {
+  font-size: 0.78rem; color: var(--muted); min-height: 1.2em;
+}
+
 `;
