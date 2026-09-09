@@ -1212,6 +1212,74 @@ export function serveUi(
         return;
       }
 
+      // CSV export of a table with the same filters/sort as /api/db/table (no pagination).
+      if (req.method === "GET" && url.pathname === "/api/db/export") {
+        const co = Company.open(root, url.searchParams.get("company") ?? "");
+        const dbName = url.searchParams.get("db") ?? "";
+        const table = url.searchParams.get("table") ?? "";
+        if (!/^[\w.-]+$/.test(dbName)) return json(res, { error: "invalid db name" }, 400);
+        if (!/^[A-Za-z_][\w]*$/.test(table)) return json(res, { error: "invalid table name" }, 400);
+        const dbPath = path.join(co.dir, "data", dbName);
+        if (!fs.existsSync(dbPath)) return json(res, { error: "no such database" }, 404);
+        let db: InstanceType<typeof DatabaseSync> | null = null;
+        try {
+          db = new DatabaseSync(dbPath, { readOnly: true });
+          const tableNames = (
+            db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[]
+          ).map((t) => t.name);
+          if (!tableNames.includes(table)) return json(res, { error: "no such table" }, 404);
+          const cols = (db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]).map(
+            (c) => c.name
+          );
+          const colSet = new Set(cols);
+          const sort = url.searchParams.get("sort") ?? "";
+          const dir = url.searchParams.get("dir") === "desc" ? "DESC" : "ASC";
+          const q = (url.searchParams.get("q") ?? "").trim();
+          const where: string[] = [];
+          const params: unknown[] = [];
+          for (const [k, v] of url.searchParams) {
+            if (!k.startsWith("f_") || !v) continue;
+            const col = k.slice(2);
+            if (!colSet.has(col)) continue;
+            where.push(`"${col}" LIKE ?`);
+            params.push(`%${v}%`);
+          }
+          if (q) {
+            where.push("(" + cols.map((c) => `CAST("${c}" AS TEXT) LIKE ?`).join(" OR ") + ")");
+            cols.forEach(() => params.push(`%${q}%`));
+          }
+          const whereSql = where.length ? ` WHERE ${where.join(" AND ")}` : "";
+          const orderSql = sort && colSet.has(sort) ? ` ORDER BY "${sort}" ${dir}` : "";
+          const EXPORT_CAP = 100_000;
+          const rows = db
+            .prepare(`SELECT * FROM "${table}"${whereSql}${orderSql} LIMIT ?`)
+            .all(...([...params, EXPORT_CAP] as never[])) as Record<string, unknown>[];
+
+          const esc = (v: unknown): string => {
+            if (v === null || v === undefined) return "";
+            const s = String(v);
+            if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+            return s;
+          };
+          const lines = [cols.map(esc).join(",")];
+          for (const r of rows) lines.push(cols.map((c) => esc(r[c])).join(","));
+          const csv = lines.join("\n") + "\n";
+          const safeTable = table.replace(/[^\w.-]+/g, "_");
+          const safeDb = dbName.replace(/[^\w.-]+/g, "_");
+          res.writeHead(200, {
+            "content-type": "text/csv; charset=utf-8",
+            "content-disposition": `attachment; filename="${safeDb}-${safeTable}.csv"`,
+            "cache-control": "no-store",
+          });
+          res.end(csv);
+        } catch (e) {
+          json(res, { error: (e as Error).message }, 400);
+        } finally {
+          db?.close();
+        }
+        return;
+      }
+
       if (req.method === "POST" && url.pathname === "/api/db/query") {
         const body = await readBody(req);
         const co = Company.open(root, String(body.company ?? ""));

@@ -3,6 +3,70 @@ export const DB = `// ---------- sqlite browser (read-only): overview → table 
 
 var dbState = { list: [], view: 'overview', db: null, table: null, columns: [],
   page: 0, pageSize: 50, pages: 1, total: 0, sort: '', dir: 'asc', q: '', filters: {}, back: null };
+var dbSqlLast = null; // { columns, rows, total, truncated } for CSV export of query results
+
+function csvEscapeCell(v) {
+  if (v === null || v === undefined) return '';
+  var s = String(v);
+  if (/[",\\n\\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function rowsToCsv(columns, rows) {
+  var lines = [columns.map(csvEscapeCell).join(',')];
+  rows.forEach(function (row) {
+    lines.push(row.map(csvEscapeCell).join(','));
+  });
+  return lines.join('\\n') + '\\n';
+}
+
+function downloadCsv(filename, csvText) {
+  var blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
+function exportDbTableCsv() {
+  if (!dbState.db || !dbState.table || !companySlug) return;
+  var qs = new URLSearchParams({
+    company: companySlug,
+    db: dbState.db,
+    table: dbState.table,
+    dir: dbState.dir
+  });
+  if (dbState.sort) qs.set('sort', dbState.sort);
+  if (dbState.q) qs.set('q', dbState.q);
+  Object.keys(dbState.filters).forEach(function (c) {
+    if (dbState.filters[c]) qs.set('f_' + c, dbState.filters[c]);
+  });
+  var a = document.createElement('a');
+  a.href = '/api/db/export?' + qs.toString();
+  a.download = dbState.db.replace(/\\.[^.]+$/, '') + '-' + dbState.table + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast('Exporting ' + dbState.table + '\\u2026', 'ok');
+}
+
+function exportDbSqlCsv() {
+  if (!dbSqlLast || !dbSqlLast.columns || !dbSqlLast.rows || !dbSqlLast.rows.length) {
+    showToast('Run a query first', 'err');
+    return;
+  }
+  var name = (dbState.db || 'query').replace(/\\.[^.]+$/, '') + '-query.csv';
+  downloadCsv(name, rowsToCsv(dbSqlLast.columns, dbSqlLast.rows));
+  showToast(
+    'Exported ' + dbSqlLast.rows.length + ' row' + (dbSqlLast.rows.length === 1 ? '' : 's')
+      + (dbSqlLast.truncated ? ' (first 200)' : ''),
+    'ok'
+  );
+}
 
 function openDbBrowser() {
   markDataFresh(false);
@@ -99,6 +163,10 @@ function renderDbTable(body) {
   [25, 50, 100, 200].forEach(function (n) { var o = document.createElement('option'); o.value = String(n); o.textContent = n + ' / page'; if (n === dbState.pageSize) o.selected = true; psl.appendChild(o); });
   psl.onchange = function () { dbState.pageSize = Number(psl.value); dbState.page = 0; loadDbPage(); };
   bar.appendChild(psl);
+  var exportBtn = el('button', 'pgbtn', 'Export CSV');
+  exportBtn.title = 'Download all matching rows as CSV (respects search/sort, up to 100k)';
+  exportBtn.onclick = exportDbTableCsv;
+  bar.appendChild(exportBtn);
   var sqlBtn = el('button', 'pgbtn', 'SQL'); sqlBtn.title = 'raw read-only query'; sqlBtn.onclick = function () { openDbSql(); };
   bar.appendChild(sqlBtn);
   body.appendChild(bar);
@@ -255,13 +323,45 @@ function openDbSql() {
       var runRow = el('div', 'dbsql-actions');
       var run = el('button', 'btn', 'Run (\\u2318\\u21a9)'); run.onclick = runDbSql;
       runRow.appendChild(run);
+      var exportSql = el('button', 'btn', 'Export CSV');
+      exportSql.id = 'dbSqlExportBtn';
+      exportSql.title = 'Download the last query result as CSV';
+      exportSql.disabled = !(dbSqlLast && dbSqlLast.rows && dbSqlLast.rows.length);
+      exportSql.onclick = exportDbSqlCsv;
+      runRow.appendChild(exportSql);
       runRow.appendChild(el('span', 'muted', 'SELECT / PRAGMA / WITH only'));
       sqlPane.appendChild(runRow);
       body.appendChild(sqlPane);
 
       var out = el('div', 'dbsql-out'); out.id = 'dbSqlOut'; body.appendChild(out);
+      if (dbSqlLast && dbSqlLast.rows && dbSqlLast.rows.length) {
+        paintDbSqlResult(out, dbSqlLast);
+      }
     }
   });
+}
+
+function paintDbSqlResult(out, d) {
+  out.innerHTML = '';
+  if (!d.rows.length) {
+    out.appendChild(el('div', 'muted', '(no rows)'));
+    return;
+  }
+  var wrap = el('div', 'dbtablewrap');
+  var t = el('table', 'dbt');
+  var h = el('tr');
+  d.columns.forEach(function (c) { h.appendChild(el('th', null, c)); });
+  t.appendChild(h);
+  d.rows.forEach(function (row) {
+    var tr = el('tr');
+    row.forEach(function (v) {
+      tr.appendChild(el('td', v === null ? 'null' : null, v === null ? 'NULL' : String(v)));
+    });
+    t.appendChild(tr);
+  });
+  wrap.appendChild(t);
+  out.appendChild(wrap);
+  out.appendChild(el('div', 'muted', d.total + ' row(s)' + (d.truncated ? ' \\u2014 first 200' : '')));
 }
 
 function promptDbSql() {
@@ -309,19 +409,26 @@ function promptDbSql() {
 
 function runDbSql() {
   var out = document.getElementById('dbSqlOut'); var sql = document.getElementById('dbSql').value;
+  var exportBtn = document.getElementById('dbSqlExportBtn');
   out.innerHTML = ''; out.appendChild(el('div', 'muted', 'running\\u2026'));
+  if (exportBtn) exportBtn.disabled = true;
   fetch('/api/db/query', { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ company: companySlug, db: dbState.db, sql: sql }) })
     .then(function (r) { return r.json(); }).then(function (d) {
+      if (d.error) {
+        dbSqlLast = null;
+        out.innerHTML = '';
+        out.appendChild(el('div', 'muted', 'error: ' + d.error));
+        return;
+      }
+      dbSqlLast = d;
+      paintDbSqlResult(out, d);
+      if (exportBtn) exportBtn.disabled = !d.rows.length;
+    }).catch(function (e) {
+      dbSqlLast = null;
       out.innerHTML = '';
-      if (d.error) { out.appendChild(el('div', 'muted', 'error: ' + d.error)); return; }
-      if (!d.rows.length) { out.appendChild(el('div', 'muted', '(no rows)')); return; }
-      var wrap = el('div', 'dbtablewrap'); var t = el('table', 'dbt'); var h = el('tr');
-      d.columns.forEach(function (c) { h.appendChild(el('th', null, c)); }); t.appendChild(h);
-      d.rows.forEach(function (row) { var tr = el('tr'); row.forEach(function (v) { tr.appendChild(el('td', v === null ? 'null' : null, v === null ? 'NULL' : String(v))); }); t.appendChild(tr); });
-      wrap.appendChild(t); out.appendChild(wrap);
-      out.appendChild(el('div', 'muted', d.total + ' row(s)' + (d.truncated ? ' \\u2014 first 200' : '')));
-    }).catch(function (e) { out.innerHTML = ''; out.appendChild(el('div', 'muted', 'failed: ' + e)); });
+      out.appendChild(el('div', 'muted', 'failed: ' + e));
+    });
 }
 
 function refresh(opts) {
