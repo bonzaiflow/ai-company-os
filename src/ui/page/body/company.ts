@@ -56,6 +56,7 @@ export const COMPANY = `<main id="viewCompany" class="agent-open">
         <div class="bars" id="bars">
           <div class="bar" id="tokWrap">Tokens remaining <span class="num" id="tokTxt"></span><div class="track"><div class="fill" id="tokBar"></div></div></div>
           <div class="co-pinned" id="coPinnedTools"></div>
+          <button type="button" class="grant-btn" id="coExportBtn" onclick="openCompanyExport()" title="Export company as .zip">Export</button>
           <div class="co-tools">
             <button type="button" class="co-tools-toggle" id="coToolsToggle" onclick="toggleCoTools(event)" aria-expanded="false" aria-controls="coToolsMenu">More</button>
             <div class="co-tools-menu" id="coToolsMenu" hidden>

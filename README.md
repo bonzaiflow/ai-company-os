@@ -121,6 +121,14 @@ Telegram tip: create a bot with BotFather, set `TELEGRAM_BOT_TOKEN`, put your ch
 
 Webhook tip: `curl -X POST http://localhost:4646/api/hooks/<slug> -H 'content-type: application/json' -H "x-connector-secret: $WEBHOOK_SECRET" -d '{"text":"hello","from":"zapier"}'`
 
+Companies are plain folders under `companies/<slug>/` — zip and share them anytime. From the dashboard: **More → Export** (layout or full). CLI:
+
+```bash
+ai-company-os export <slug> --mode layout   # plan + org + skills + settings (no tasks/data)
+ai-company-os export <slug> --mode full     # entire company folder
+ai-company-os export <slug> -o ~/Desktop/acme-layout.zip
+```
+
 ## Skills
 
 `skills/<name>/SKILL.md` (claude-style) are copied into a company at launch and injected into the prompts of agents that list them. Bundled: `web-research`, `data-entry`, `delegation`, `reporting`. Your workspace `skills/` directory overrides bundled skills of the same name — manage it from the Skills view in the UI (inline editor, .zip/.md upload) or just drop folders in.

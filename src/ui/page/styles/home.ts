@@ -410,6 +410,16 @@ export const HOME = `/* Home hierarchy */
   display: flex; justify-content: space-between; font-size: 0.62rem; color: var(--muted); margin-bottom: 2px;
 }
 .corow-top-actions { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+.row-export {
+  flex: 0 0 auto; border: 1px solid var(--border); background: var(--bg); color: var(--muted);
+  font-size: 0.68rem; font-weight: 600; line-height: 1; padding: 0.28rem 0.55rem; cursor: pointer;
+  border-radius: 999px; opacity: 0.75;
+  transition: color 0.15s, border-color 0.15s, opacity 0.15s, background 0.15s;
+}
+.row-export:hover {
+  opacity: 1; color: #34d399; border-color: rgba(52, 211, 153, 0.45);
+  background: color-mix(in srgb, #34d399 10%, var(--bg));
+}
 .row-del {
   flex: 0 0 auto; border: 0; background: transparent; color: var(--muted);
   font-size: 1.05rem; line-height: 1; padding: 0.1rem 0.35rem; cursor: pointer;

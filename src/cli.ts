@@ -6,6 +6,7 @@ import { Command } from "commander";
 import { initWorkspace, loadConfig, resolveUiWorkspaceRoot, setPersistedWorkspaceRoot } from "./config.js";
 import { createProvider } from "./llm/index.js";
 import { listCheckins, runCheckin } from "./core/checkin.js";
+import { exportCompanyZip, type CompanyExportMode } from "./core/export.js";
 import { decideApproval, listApprovals } from "./core/governance.js";
 import { runDaemon } from "./core/scheduler.js";
 import { runLoop, tickWave } from "./core/runtime.js";
@@ -499,6 +500,33 @@ program
     else {
       console.log(c.red(`audit chain BROKEN at line ${bad.line}: ${bad.reason}`));
       process.exit(1);
+    }
+  });
+
+program
+  .command("export")
+  .description("export a company as a shareable .zip (layout or full)")
+  .argument("<slug>", "company slug")
+  .option("--mode <mode>", "layout (plan+org+skills) or full (everything)", "layout")
+  .option("-o, --out <path>", "output zip path (default: <slug>-<mode>.zip in cwd)")
+  .action((slugArg, opts) => {
+    const slug = slugify(String(slugArg));
+    const modeRaw = String(opts.mode ?? "layout").toLowerCase();
+    const mode: CompanyExportMode = modeRaw === "full" ? "full" : "layout";
+    if (modeRaw !== "layout" && modeRaw !== "full") {
+      console.error(c.red('mode must be "layout" or "full"'));
+      process.exit(1);
+    }
+    const co = Company.open(ROOT, slug);
+    const exported = exportCompanyZip(co, mode);
+    try {
+      const dest = path.resolve(String(opts.out || exported.filename));
+      fs.copyFileSync(exported.zipPath, dest);
+      const bytes = fs.statSync(dest).size;
+      co.audit({ type: "company.exported", ok: true, detail: `${mode} → ${dest} (${bytes} B)` });
+      console.log(c.green(`exported ${mode} → ${dest} (${bytes.toLocaleString()} bytes)`));
+    } finally {
+      exported.cleanup();
     }
   });
 

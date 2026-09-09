@@ -44,6 +44,7 @@ import {
   writeSkillFile,
 } from "../core/skills.js";
 import { listCheckins, runCheckin } from "../core/checkin.js";
+import { exportCompanyZip, type CompanyExportMode } from "../core/export.js";
 import {
   handleWebhook,
   pollConnectors,
@@ -563,6 +564,40 @@ export function serveUi(
         runners.delete(slug);
         Company.delete(root, slug);
         json(res, { ok: true });
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/company/export") {
+        const slug = slugify(url.searchParams.get("company") ?? "");
+        const modeRaw = (url.searchParams.get("mode") ?? "layout").toLowerCase();
+        const mode: CompanyExportMode = modeRaw === "full" ? "full" : "layout";
+        if (!slug) {
+          json(res, { error: "company slug required" }, 400);
+          return;
+        }
+        try {
+          const co = Company.open(root, slug);
+          const exported = exportCompanyZip(co, mode);
+          try {
+            const buf = fs.readFileSync(exported.zipPath);
+            res.writeHead(200, {
+              "content-type": "application/zip",
+              "content-disposition": `attachment; filename="${exported.filename}"`,
+              "content-length": buf.length,
+              "cache-control": "no-store",
+            });
+            res.end(buf);
+            co.audit({
+              type: "company.exported",
+              ok: true,
+              detail: `${mode} → ${exported.filename} (${buf.length} B)`,
+            });
+          } finally {
+            exported.cleanup();
+          }
+        } catch (e) {
+          json(res, { error: (e as Error).message }, 400);
+        }
         return;
       }
 

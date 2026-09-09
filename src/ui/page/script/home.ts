@@ -70,6 +70,16 @@ function renderCompanyRow(co) {
 
   var side = el('div', 'corow-side');
   appendTokenBar(side, co, true);
+  var actions = el('div', 'corow-top-actions');
+  var exp = el('button', 'row-export', 'Export');
+  exp.type = 'button';
+  exp.title = 'Export company as .zip';
+  exp.setAttribute('aria-label', 'Export ' + co.name);
+  exp.onclick = function (e) {
+    e.stopPropagation();
+    openCompanyExport(co.slug, co.name);
+  };
+  actions.appendChild(exp);
   var del = el('button', 'row-del', '\\u00d7');
   del.type = 'button';
   del.title = 'Delete company';
@@ -78,7 +88,8 @@ function renderCompanyRow(co) {
     e.stopPropagation();
     deleteCompany(co.slug, co.name);
   };
-  side.appendChild(del);
+  actions.appendChild(del);
+  side.appendChild(actions);
   row.appendChild(side);
 
   row.onclick = function () { openCompany(co.slug); };
@@ -502,6 +513,100 @@ function deleteCurrentCompany() {
   if (!companySlug) return;
   var name = state && state.meta ? state.meta.name : companySlug;
   deleteCompany(companySlug, name);
+}
+
+function openCompanyExport(slug, name) {
+  slug = slug || companySlug;
+  if (!slug) return;
+  name = name || (state && state.meta && companySlug === slug ? state.meta.name : slug);
+  showModal({
+    eyebrow: 'Share',
+    title: 'Export company',
+    accent: '#34d399',
+    body: function (body) {
+      var callout = el('div', 'modal-callout');
+      var copy = el('div', 'modal-callout-copy');
+      copy.appendChild(el('div', 'modal-callout-title', name));
+      copy.appendChild(el('div', 'modal-callout-sub',
+        'Download a .zip you can hand to someone else. Layout is the reusable shape; full includes tasks and data.'));
+      callout.appendChild(copy);
+      body.appendChild(callout);
+
+      var grid = el('div', 'conn-grid');
+      function card(mode, title, desc, cta) {
+        var btn = el('button', 'conn-card');
+        btn.type = 'button';
+        btn.setAttribute('data-export-mode', mode);
+        var top = el('div', 'conn-card-top');
+        top.appendChild(el('div', 'conn-card-name', title));
+        top.appendChild(el('span', 'pill ' + (mode === 'full' ? 'done' : 'neutral'), mode));
+        btn.appendChild(top);
+        btn.appendChild(el('div', 'conn-card-desc', desc));
+        var ctaEl = el('div', 'conn-card-cta', cta);
+        btn.appendChild(ctaEl);
+        btn.onclick = function () { downloadCompanyExport(mode, slug, btn, cta); };
+        grid.appendChild(btn);
+      }
+      card(
+        'layout',
+        'Layout only',
+        'Plan, org chart (agent profiles), skills, and company settings. No tasks, chat, audit, or data.',
+        'Download layout.zip \\u2192'
+      );
+      card(
+        'full',
+        'Full company',
+        'Everything in the company folder: layout plus tasks, queue, data (databases/uploads), chat, and audit.',
+        'Download full.zip \\u2192'
+      );
+      body.appendChild(grid);
+      body.appendChild(el('div', 'muted',
+        'CLI: ai-company-os export ' + slug + ' --mode layout|full'));
+    }
+  });
+}
+
+function downloadCompanyExport(mode, slug, btn, ctaLabel) {
+  slug = slug || companySlug;
+  if (!slug) return;
+  var cta = btn ? btn.querySelector('.conn-card-cta') : null;
+  if (btn) {
+    btn.disabled = true;
+    if (cta) cta.textContent = 'Preparing\\u2026';
+  }
+  var url = '/api/company/export?company=' + encodeURIComponent(slug)
+    + '&mode=' + encodeURIComponent(mode);
+  fetch(url)
+    .then(function (r) {
+      if (!r.ok) {
+        return r.json().then(function (d) {
+          throw new Error((d && d.error) || ('export failed (' + r.status + ')'));
+        });
+      }
+      var disp = r.headers.get('content-disposition') || '';
+      var m = /filename="([^"]+)"/.exec(disp);
+      var filename = (m && m[1]) || (slug + '-' + mode + '.zip');
+      return r.blob().then(function (blob) { return { blob: blob, filename: filename }; });
+    })
+    .then(function (out) {
+      var href = URL.createObjectURL(out.blob);
+      var a = document.createElement('a');
+      a.href = href;
+      a.download = out.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(href); }, 1500);
+      showToast('Exported ' + out.filename, 'ok');
+      closeModal();
+    })
+    .catch(function (e) {
+      showToast(e.message || String(e), 'err');
+      if (btn) {
+        btn.disabled = false;
+        if (cta) cta.textContent = ctaLabel || ('Download ' + mode + '.zip \\u2192');
+      }
+    });
 }
 
 function deletePlan(slug, name) {
