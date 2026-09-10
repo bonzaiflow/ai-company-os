@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { formatCliResult, resolveWorkspaceRoot, runCli } from "./run.js";
+import { registerCuratedTools } from "./tools.js";
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
@@ -16,7 +17,8 @@ export function createMcpServer(): McpServer {
       description:
         "Run any ai-company-os CLI command with --json. Pass argv without the binary name " +
         '(e.g. ["companies"] or ["show","state","-c","acme"] or ["chat","-c","acme","status?"]). ' +
-        "Workspace is AI_COMPANY_OS_ROOT / cwd. See docs/CLI.md for the full command map.",
+        "Workspace is AI_COMPANY_OS_ROOT / cwd. See docs/CLI.md for the full command map. " +
+        "Prefer curated tools (show_state, chat, tick, …) when they fit; use run_cli for everything else.",
       inputSchema: {
         argv: z
           .array(z.string())
@@ -81,6 +83,7 @@ export function createMcpServer(): McpServer {
     }
   );
 
+  registerCuratedTools(server);
   return server;
 }
 
