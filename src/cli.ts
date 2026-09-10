@@ -5,9 +5,8 @@ import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { initWorkspace, loadConfig, resolveUiWorkspaceRoot, setPersistedWorkspaceRoot } from "./config.js";
 import { createProvider } from "./llm/index.js";
-import { listCheckins, runCheckin } from "./core/checkin.js";
 import { exportCompanyZip, type CompanyExportMode } from "./core/export.js";
-import { decideApproval, listApprovals } from "./core/governance.js";
+import { listApprovals } from "./core/governance.js";
 import { runDaemon } from "./core/scheduler.js";
 import { runLoop, tickWave } from "./core/runtime.js";
 import { Company, scaffoldCompany } from "./core/store.js";
@@ -21,6 +20,7 @@ import {
   openCompany as openCompanyCtx,
   out,
   setJsonMode,
+  wantJson,
   type CliCtx,
 } from "./cli/helpers.js";
 import { registerShowCommands } from "./cli/show.js";
@@ -32,6 +32,7 @@ import { registerSkillsCommands } from "./cli/skills.js";
 import { registerChatCommands } from "./cli/chat.js";
 import { registerConfigCommands } from "./cli/config.js";
 import { registerUploadCommands } from "./cli/upload.js";
+import { registerGovernanceCommands } from "./cli/governance.js";
 import { companyState, listAgentFiles } from "./cli/inspect.js";
 
 const ROOT = process.cwd();
@@ -86,6 +87,7 @@ registerSkillsCommands(program, CTX);
 registerChatCommands(program, CTX);
 registerConfigCommands(program, CTX);
 registerUploadCommands(program, CTX);
+registerGovernanceCommands(program, CTX);
 program
   .command("init")
   .description("create ai-company-os.json + companies/ + plans/ in the current directory")
@@ -263,7 +265,9 @@ program
   .option("-c, --company <slug>")
   .option("-d, --desc <description>")
   .option("--recur <hours>", "also re-create this task every N hours (perpetual)")
+  .option("--json", "JSON output")
   .action((titleWords: string[], opts) => {
+    if (opts.json) setJsonMode(true);
     const co = openCompany(opts.company);
     const chief = co.chief();
     if (!chief) return program.error("company has no chief");
@@ -275,7 +279,7 @@ program
       createdBy: "user",
     });
     co.enqueue(t.id);
-    console.log(c.green(`${t.id} queued for ${chief.name}`));
+    let recurring = false;
     if (opts.recur) {
       const file = path.join(co.dir, "recurring.json");
       const templates = readJson<import("./types.js").RecurringTask[]>(file, []);
@@ -286,8 +290,15 @@ program
         lastCreatedAt: new Date().toISOString(),
       });
       writeJson(file, templates);
-      console.log(c.dim(`recurring every ${opts.recur}h — keep \`ai-company-os daemon\` running`));
+      recurring = true;
     }
+    out(
+      { ok: true, task: { id: t.id, title: t.title, assignee: t.assignee }, recurring: recurring || undefined },
+      () => {
+        console.log(c.green(`${t.id} queued for ${chief.name}`));
+        if (recurring) console.log(c.dim(`recurring every ${opts.recur}h — keep \`ai-company-os daemon\` running`));
+      }
+    );
   });
 
 program
@@ -295,15 +306,21 @@ program
   .description("process one parallel wave of ready tasks (distinct assignees)")
   .option("-c, --company <slug>")
   .option("--steps <n>", "max agent steps per task", "20")
+  .option("--json", "JSON output")
   .action(async (opts) => {
+    if (opts.json) setJsonMode(true);
     const co = openCompany(opts.company);
     const results = await tickWave(co, loadConfig(ROOT), {
       maxSteps: Number(opts.steps),
-      log: (l) => console.log(l),
+      log: (l) => {
+        if (!wantJson()) console.log(l);
+      },
     });
-    for (const r of results) {
-      console.log(c.dim(`tick: ${r.status}${r.detail ? ` (${r.detail})` : ""}${r.taskId ? ` ${r.taskId}` : ""}`));
-    }
+    out({ results }, () => {
+      for (const r of results) {
+        console.log(c.dim(`tick: ${r.status}${r.detail ? ` (${r.detail})` : ""}${r.taskId ? ` ${r.taskId}` : ""}`));
+      }
+    });
   });
 
 program
@@ -312,14 +329,20 @@ program
   .option("-c, --company <slug>")
   .option("-t, --ticks <n>", "max ticks", "50")
   .option("--steps <n>", "max agent steps per task", "20")
+  .option("--json", "JSON output")
   .action(async (opts) => {
+    if (opts.json) setJsonMode(true);
     const co = openCompany(opts.company);
-    const out = await runLoop(co, loadConfig(ROOT), {
+    const result = await runLoop(co, loadConfig(ROOT), {
       maxTicks: Number(opts.ticks),
       maxSteps: Number(opts.steps),
-      log: (l) => console.log(l),
+      log: (l) => {
+        if (!wantJson()) console.log(l);
+      },
     });
-    console.log(c.bold(`\nstopped after ${out.ticks} tick(s): ${out.stopped}`));
+    out({ ok: true, ...result }, () => {
+      console.log(c.bold(`\nstopped after ${result.ticks} tick(s): ${result.stopped}`));
+    });
   });
 
 program
@@ -424,7 +447,9 @@ program
   .argument("[taskId]")
   .option("-c, --company <slug>")
   .option("--all-failed", "retry every failed task")
+  .option("--json", "JSON output")
   .action((taskId: string | undefined, opts) => {
+    if (opts.json) setJsonMode(true);
     const co = openCompany(opts.company);
     const targets = opts.allFailed
       ? co.listTasks().filter((t) => t.status === "failed")
@@ -432,14 +457,21 @@ program
         ? [co.loadTask(taskId)]
         : [];
     if (!targets.length) return program.error("give a task id or --all-failed");
+    const retried: string[] = [];
     for (const t of targets) {
       t.status = "queued";
       t.maxAttempts = (t.attempts ?? 0) + DEFAULT_RETRY_HEADROOM; // fresh runway
       co.saveTask(t);
       co.enqueue(t.id);
       co.audit({ type: "task.retried", ok: true, taskId: t.id, detail: "by owner" });
-      console.log(c.green(`${t.id} re-queued (attempt ${(t.attempts ?? 0) + 1})`));
+      retried.push(t.id);
     }
+    out({ ok: true, retried }, () => {
+      for (const id of retried) {
+        const t = co.loadTask(id);
+        console.log(c.green(`${id} re-queued (attempt ${(t.attempts ?? 0) + 1})`));
+      }
+    });
   });
 
 program
@@ -454,150 +486,14 @@ program
   });
 
 program
-  .command("pause")
-  .description("pause a company (no ticks until resumed)")
-  .option("-c, --company <slug>")
-  .action((opts) => {
-    const co = openCompany(opts.company);
-    co.saveMeta({ paused: true });
-    co.audit({ type: "company.paused", ok: true, detail: "by owner" });
-    console.log(c.yellow(`${co.meta.slug} paused`));
-  });
-
-program
-  .command("resume")
-  .description("resume a paused company")
-  .option("-c, --company <slug>")
-  .action((opts) => {
-    const co = openCompany(opts.company);
-    co.saveMeta({ paused: false });
-    co.audit({ type: "company.resumed", ok: true, detail: "by owner" });
-    console.log(c.green(`${co.meta.slug} resumed`));
-  });
-
-program
-  .command("schedule")
-  .description("set the perpetual wake cadence for a company")
-  .option("-c, --company <slug>")
-  .option("--every <minutes>", "wake every N minutes", "30")
-  .option("--ticks <n>", "max ticks per wake", "5")
-  .option("--off", "disable the schedule")
-  .action((opts) => {
-    const co = openCompany(opts.company);
-    const schedule = {
-      everyMinutes: Number(opts.every),
-      maxTicks: Number(opts.ticks),
-      active: !opts.off,
-    };
-    co.saveMeta({ schedule });
-    console.log(
-      opts.off
-        ? c.yellow("schedule disabled")
-        : c.green(`wakes every ${schedule.everyMinutes}m, up to ${schedule.maxTicks} ticks — run: ai-company-os daemon`)
-    );
-  });
-
-program
-  .command("approvals")
-  .description("list pending approval requests")
-  .option("-c, --company <slug>")
-  .action((opts) => {
-    const co = openCompany(opts.company);
-    const pending = listApprovals(co, "pending");
-    if (!pending.length) return console.log(c.dim("no pending approvals"));
-    for (const a of pending) {
-      console.log(
-        `${c.bold(a.id)} ${c.cyan(a.taskId)} ${a.agent} wants ${c.yellow(a.tool)} ${c.dim(JSON.stringify(a.args).slice(0, 100))}`
-      );
-    }
-    console.log(c.dim(`\napprove: ai-company-os approve <id> · deny: ai-company-os deny <id> [-n note]`));
-  });
-
-program
-  .command("approve")
-  .argument("<id>")
-  .option("-c, --company <slug>")
-  .option("-n, --note <note>")
-  .description("approve a pending request (re-queues the task)")
-  .action((id: string, opts) => {
-    const co = openCompany(opts.company);
-    decideApproval(co, id, true, opts.note);
-    console.log(c.green(`${id} approved — task re-queued`));
-  });
-
-program
-  .command("deny")
-  .argument("<id>")
-  .option("-c, --company <slug>")
-  .option("-n, --note <note>")
-  .description("deny a pending request (agent is told to work around it)")
-  .action((id: string, opts) => {
-    const co = openCompany(opts.company);
-    decideApproval(co, id, false, opts.note);
-    console.log(c.yellow(`${id} denied — task re-queued with refusal`));
-  });
-
-program
-  .command("checkin")
-  .description("capture a statistical company snapshot right now")
-  .option("-c, --company <slug>")
-  .action(async (opts) => {
-    const co = openCompany(opts.company);
-    const ci = await runCheckin(co, loadConfig(ROOT));
-    console.log(c.bold(`\nCheck-in ${ci.ts}\n`));
-    if (ci.stats) {
-      const s = ci.stats;
-      console.log(
-        `Budget ${s.budget.pctLeft}% left · ${s.budget.spent.toLocaleString()} spent · ${s.budget.toolCalls} tools`
-      );
-      console.log(
-        `Tasks ${s.tasks.total}: ${s.tasks.done} done, ${s.tasks.running} running, ${s.tasks.waiting} waiting, ${s.tasks.queued} queued, ${s.tasks.failed} failed · queue ${s.queue}`
-      );
-      for (const db of s.databases) {
-        for (const t of db.tables) console.log(`  ${db.file}/${t.name}: ${t.rows} rows`);
-      }
-      for (const u of s.uploads) console.log(`  upload ${u.name}: ${u.bytes} B`);
-    } else if (ci.report) {
-      console.log(ci.report);
-    }
-    if (ci.questions.length) console.log(c.yellow("\nQuestions:\n") + ci.questions.map((q) => `  • ${q}`).join("\n"));
-    if (ci.needs.length) console.log(c.magenta("\nNeeds:\n") + ci.needs.map((n) => `  • ${n}`).join("\n"));
-    console.log(c.dim(`\nsaved → ${ci.file}`));
-  });
-
-program
-  .command("checkins")
-  .description("list past check-ins")
-  .option("-c, --company <slug>")
-  .action((opts) => {
-    const co = openCompany(opts.company);
-    for (const ci of listCheckins(co)) {
-      console.log(`${c.bold(ci.ts)}  ${ci.questions.length} question(s), ${ci.needs.length} need(s)  ${c.dim(ci.file)}`);
-    }
-  });
-
-program
-  .command("audit")
-  .description("verify the tamper-evident audit chain")
-  .argument("[action]", "verify", "verify")
-  .option("-c, --company <slug>")
-  .action((action: string, opts) => {
-    const co = openCompany(opts.company);
-    const bad = co.verifyAudit();
-    if (!bad) console.log(c.green(`audit chain intact ✓ (${co.auditTail(1_000_000).length} events)`));
-    else {
-      console.log(c.red(`audit chain BROKEN at line ${bad.line}: ${bad.reason}`));
-      process.exit(1);
-    }
-  });
-
-program
   .command("export")
   .description("export a company as a shareable .zip (layout or full)")
   .argument("<slug>", "company slug")
   .option("--mode <mode>", "layout (plan+org+skills) or full (everything)", "layout")
   .option("-o, --out <path>", "output zip path (default: <slug>-<mode>.zip in cwd)")
+  .option("--json", "JSON output")
   .action((slugArg, opts) => {
+    if (opts.json) setJsonMode(true);
     const slug = slugify(String(slugArg));
     const modeRaw = String(opts.mode ?? "layout").toLowerCase();
     const mode: CompanyExportMode = modeRaw === "full" ? "full" : "layout";
@@ -612,7 +508,9 @@ program
       fs.copyFileSync(exported.zipPath, dest);
       const bytes = fs.statSync(dest).size;
       co.audit({ type: "company.exported", ok: true, detail: `${mode} → ${dest} (${bytes} B)` });
-      console.log(c.green(`exported ${mode} → ${dest} (${bytes.toLocaleString()} bytes)`));
+      out({ ok: true, mode, path: dest, bytes }, () =>
+        console.log(c.green(`exported ${mode} → ${dest} (${bytes.toLocaleString()} bytes)`))
+      );
     } finally {
       exported.cleanup();
     }
