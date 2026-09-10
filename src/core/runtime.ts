@@ -1,6 +1,7 @@
 import type { AgentAction, AiCompanyOsConfig, LLMProvider, Task } from "../types.js";
-import { resolveLlm, resolveProvider } from "../llm/resolve.js";
-import { AsyncMutex, extractJson, nowIso, truncate } from "../util.js";
+import { resolveProvider } from "../llm/resolve.js";
+import { AsyncMutex, nowIso, truncate } from "../util.js";
+import { parseAction } from "./action-parse.js";
 import { consumeApproval, findDecision, requestApproval } from "./governance.js";
 import { ACTION_SCHEMA, stepPrompt, systemPrompt } from "./prompts.js";
 import {
@@ -9,6 +10,13 @@ import {
   requeueStuckRunning,
 } from "./queue.js";
 import type { Company } from "./store.js";
+import {
+  completeTask,
+  failTask,
+  MAX_STUCK_TICKS,
+  retryOrFail,
+  taskDepth,
+} from "./task-lifecycle.js";
 import { resolveToolName, toolsFor, type Tool } from "./tools.js";
 
 export { PRIORITY_RANK, raiseTaskPriority } from "./priority.js";
@@ -22,7 +30,6 @@ export interface TickResult {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const DEFAULT_MAX_ATTEMPTS = 3;
 
 const storeLocks = new Map<string, AsyncMutex>();
 function storeLockFor(co: Company): AsyncMutex {
@@ -32,31 +39,6 @@ function storeLockFor(co: Company): AsyncMutex {
     storeLocks.set(co.dir, m);
   }
   return m;
-}
-
-/** A genuine work failure: retry with context until the attempt budget is
- * spent, then fail terminally (report to manager, wake parent). */
-function retryOrFail(co: Company, task: Task, agent: string, reason: string): "retried" | "failed" {
-  const attempts = (task.attempts ?? 0) + 1;
-  const max = task.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-  task.attempts = attempts;
-  if (attempts < max) {
-    task.status = "queued";
-    task.result = `FAILED (attempt ${attempts}/${max}): ${reason}`;
-    co.saveTask(task);
-    co.enqueue(task.id);
-    co.audit({
-      type: "task.retry",
-      ok: true,
-      taskId: task.id,
-      agent,
-      detail: `attempt ${attempts}/${max} failed: ${truncate(reason, 140)} — re-queued`,
-    });
-    co.appendThought(agent, task.id, `\n**attempt ${attempts} failed:** ${reason} — will retry`);
-    return "retried";
-  }
-  failTask(co, task, agent, `${reason} (after ${attempts} attempts)`);
-  return "failed";
 }
 
 export interface TickOptions {
@@ -74,174 +56,6 @@ export interface TickOptions {
   storeLock?: AsyncMutex;
   /** max tasks to claim per wave (distinct assignees) */
   maxParallel?: number;
-}
-
-/** Parse a model reply into an action. If it isn't valid JSON and an
- * "execution" role model is configured, ask that (typically small, fast)
- * model to convert the raw text into one valid action object. This is what
- * lets models without structured-output / native tool-calling support still
- * drive tools: anything that can write JSON-ish text gets repaired here. */
-async function parseAction(
-  co: Company,
-  cfg: AiCompanyOsConfig,
-  agent: string,
-  taskId: string,
-  raw: string,
-  tools: Tool[]
-): Promise<AgentAction> {
-  try {
-    return extractJson(raw) as AgentAction;
-  } catch (err) {
-    const fixerOpts = { role: "execution" as const, meta: co.meta };
-    const r = resolveLlm(cfg, fixerOpts);
-    // Only attempt repair when an execution role is configured (workspace or company)
-    if (r.source !== "company_roles" && r.source !== "workspace_roles") throw err;
-    const fixer = resolveProvider(cfg, fixerOpts);
-    const res = await fixer.chat(
-      [
-        {
-          role: "system",
-          content:
-            "You convert an AI agent's raw reply into EXACTLY ONE valid JSON action object. " +
-            'Fields: "thought" (string), "action" (one of "tool"|"delegate"|"message"|"complete"), ' +
-            'plus the matching optional fields: tool+args, subtasks[{title,description,assignee}], to+content, or result.\n' +
-            (tools.length
-              ? "The ONLY valid tools (use their exact names and arg keys):\n" +
-                tools.map((t) => `- ${t.doc}`).join("\n") + "\n"
-              : "") +
-            "Copy concrete values (SQL, urls, paths, text) from the reply into args verbatim — do not drop them. " +
-            "Preserve the agent's intent faithfully. Output only the JSON object.",
-        },
-        { role: "user", content: raw },
-      ],
-      { schema: ACTION_SCHEMA, temperature: 0 }
-    );
-    co.addSpent(res.promptTokens + res.completionTokens, 0);
-    const action = extractJson(res.content) as AgentAction;
-    co.audit({
-      type: "llm.repair",
-      ok: true,
-      agent,
-      taskId,
-      detail: `${fixer.name}/${fixer.model} recovered malformed action`,
-    });
-    return action;
-  }
-}
-
-function taskDepth(co: Company, task: Task): number {
-  let depth = 0;
-  let cur = task;
-  while (cur.parent && depth < 10) {
-    cur = co.loadTask(cur.parent);
-    depth++;
-  }
-  return depth;
-}
-
-const MAX_CONTINUATIONS = 12;
-const MAX_STUCK_TICKS = 3; // consecutive no-progress ticks before a task truly fails
-
-/** Returns true if a target task was NOT yet met but is still making progress,
- * so it should be re-driven rather than marked done. This is what makes
- * "find 10000" actually reach 10000 — one tick can't, so we continue the same
- * task, seeded with the live count, until it hits the number or stalls. */
-function continueTowardTarget(co: Company, task: Task, agent: string, result: string): boolean {
-  if (!task.target) return false;
-  const have = co.measure(task.target);
-  const need = task.target.count;
-  if (have >= need) return false; // met — let it complete normally
-
-  const prev = task.lastCount ?? 0;
-  const cont = (task.continuations ?? 0) + 1;
-  const progressed = have > prev;
-  task.lastCount = have;
-  task.continuations = cont;
-
-  // stop conditions: no progress this round (real ceiling), or too many rounds
-  if (!progressed || cont > MAX_CONTINUATIONS) {
-    co.audit({
-      type: "target.stalled",
-      ok: false,
-      taskId: task.id,
-      agent,
-      detail: `${have}/${need} in ${task.target.table}`,
-    });
-    // stamp the shortfall onto the result so it survives normal completion
-    task._partialNote =
-      `PARTIAL: reached ${have}/${need} rows in ${task.target.table}` +
-      (progressed ? ` (continuation cap ${MAX_CONTINUATIONS} hit)` : ` — no new rows last round, source likely exhausted`) +
-      ".";
-    return false; // give up → normal completion, but with the shortfall noted
-  }
-
-  task.status = "queued";
-  task.result = `IN PROGRESS: ${have}/${need} rows in ${task.target.table} (round ${cont}).`;
-  co.saveTask(task);
-  if (!co.queue().includes(task.id)) co.enqueue(task.id);
-  co.audit({
-    type: "target.continue",
-    ok: true,
-    taskId: task.id,
-    agent,
-    detail: `${have}/${need} in ${task.target.table} — +${have - prev} this round, continuing`,
-  });
-  return true;
-}
-
-function completeTask(co: Company, task: Task, agent: string, result: string): void {
-  // a numeric-target task isn't "done" just because the agent said so —
-  // measure the real count and keep driving it while it grows
-  if (continueTowardTarget(co, task, agent, result)) return;
-
-  task.status = "done";
-  task.result = task._partialNote ? `${task._partialNote}\n\n${result}` : result;
-  co.saveTask(task);
-  co.audit({ type: "task.completed", ok: true, taskId: task.id, agent });
-
-  // report up: OUTBOX copy + INBOX delivery to the manager (or user log for chief)
-  const spec = co.loadAgent(agent);
-  const report = `Task ${task.id} "${task.title}" finished.\n\n${result}`;
-  if (spec.manager) {
-    co.sendMessage(agent, spec.manager, `done: ${task.title}`, report, task.id);
-  }
-
-  // when the last sibling finishes, wake the waiting parent for synthesis
-  if (task.parent) {
-    const parent = co.loadTask(task.parent);
-    const siblings = co.children(task.parent);
-    if (
-      parent.status === "waiting" &&
-      siblings.every((s) => s.status === "done" || s.status === "failed")
-    ) {
-      parent.status = "queued";
-      co.saveTask(parent);
-      co.enqueue(parent.id);
-    }
-  }
-}
-
-function failTask(co: Company, task: Task, agent: string, reason: string): void {
-  task.status = "failed";
-  task.result = `FAILED: ${reason}`;
-  co.saveTask(task);
-  co.audit({ type: "task.failed", ok: false, taskId: task.id, agent, detail: reason });
-  const spec = co.loadAgent(agent);
-  if (spec.manager) {
-    co.sendMessage(agent, spec.manager, `failed: ${task.title}`, reason, task.id);
-  }
-  if (task.parent) {
-    const parent = co.loadTask(task.parent);
-    const siblings = co.children(task.parent);
-    if (
-      parent.status === "waiting" &&
-      siblings.every((s) => s.status === "done" || s.status === "failed")
-    ) {
-      parent.status = "queued";
-      co.saveTask(parent);
-      co.enqueue(parent.id);
-    }
-  }
 }
 
 /** Run one scheduler tick: pop the next queued task and let its assignee work
