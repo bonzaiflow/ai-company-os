@@ -4,7 +4,8 @@
   "description": "Agent-swarm orchestrator for small local models — plan with an LLM, launch a company of agents, watch them work.",
   "type": "module",
   "bin": {
-    "ai-company-os": "dist/cli.js"
+    "ai-company-os": "dist/cli.js",
+    "ai-company-os-mcp": "dist/mcp.js"
   },
   "files": [
     "dist",
@@ -14,18 +15,21 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "dev:ui": "node scripts/dev-ui.mjs",
-    "smoke": "npm run build && node dist/smoke.js"
+    "smoke": "npm run build && node dist/smoke.js",
+    "mcp": "npm run build && node dist/mcp.js"
   },
   "engines": {
     "node": ">=22.5"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "commander": "^12.1.0",
     "cytoscape": "^3.34.0",
     "cytoscape-dagre": "^4.0.0",
     "imapflow": "^1.6.5",
     "mailparser": "^3.9.14",
-    "nodemailer": "^9.0.4"
+    "nodemailer": "^9.0.4",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/mailparser": "^3.4.6",
