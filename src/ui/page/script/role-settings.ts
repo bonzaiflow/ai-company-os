@@ -90,16 +90,48 @@ function openRoleSettings() {
   });
 }
 
-/** Plan sidebar provider select; role models live in the settings modal. */
+/** Plan sidebar planning source/model; launch bar agents default; role models in settings modal. */
 function initRoles() {
+  function fillProvider(sel, selected) {
+    if (!sel) return;
+    sel.innerHTML = '';
+    (cfg.providers || []).forEach(function (p) {
+      var o = document.createElement('option');
+      o.value = p; o.textContent = p;
+      if (p === selected) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+  function bindModel(srcSel, mdlSel, preferred) {
+    if (!srcSel || !mdlSel) return;
+    function load() {
+      mdlSel.innerHTML = '<option>\\u2026</option>';
+      fetchModels(srcSel.value).then(function (d) {
+        mdlSel.innerHTML = '';
+        var def = document.createElement('option');
+        def.value = ''; def.textContent = '(provider default)';
+        mdlSel.appendChild(def);
+        (d.models || []).forEach(function (m) {
+          var o = document.createElement('option');
+          o.value = m; o.textContent = m;
+          mdlSel.appendChild(o);
+        });
+        var want = preferred || d.default || '';
+        if (want && (d.models || []).indexOf(want) !== -1) mdlSel.value = want;
+      });
+    }
+    srcSel.onchange = load;
+    load();
+  }
   var psel = document.getElementById('providerSel');
-  psel.innerHTML = '';
-  cfg.providers.forEach(function (p) {
-    var o = document.createElement('option');
-    o.value = p; o.textContent = p;
-    if (p === (cfg.roles.planning || cfg.defaultProvider)) o.selected = true;
-    psel.appendChild(o);
-  });
+  var pmdl = document.getElementById('planningModelSel');
+  fillProvider(psel, (cfg.roles && cfg.roles.planning) || cfg.defaultProvider);
+  bindModel(psel, pmdl, (cfg.models && cfg.models.planning) || '');
+
+  var asel = document.getElementById('agentsProviderSel');
+  var amdl = document.getElementById('agentsModelSel');
+  fillProvider(asel, (cfg.roles && cfg.roles.agents) || cfg.defaultProvider);
+  bindModel(asel, amdl, (cfg.models && cfg.models.agents) || '');
 }
 
 `;

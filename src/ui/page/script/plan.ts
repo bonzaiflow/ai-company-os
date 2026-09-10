@@ -67,6 +67,7 @@ function sendPlanMsg() {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       provider: document.getElementById('providerSel').value,
+      model: (document.getElementById('planningModelSel') || {}).value || undefined,
       history: planHistory,
       slug: planSlug
     })
@@ -349,7 +350,8 @@ function launchPlan() {
     body: JSON.stringify({
       plan: planDraft,
       name: document.getElementById('planName').value,
-      provider: document.getElementById('providerSel').value,
+      provider: document.getElementById('agentsProviderSel').value || document.getElementById('providerSel').value,
+      model: (document.getElementById('agentsModelSel') || {}).value || undefined,
       slug: planSlug
     })
   }).then(function (r) { return r.json(); }).then(function (d) {

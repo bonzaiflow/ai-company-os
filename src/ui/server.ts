@@ -1114,12 +1114,20 @@ export function serveUi(
         if (body.name) plan.name = String(body.name);
         const planSlug = body.slug ? String(body.slug) : slugify(plan.name);
         const planningHistory = readJson<ChatMessage[]>(planChatFile(root, planSlug), []);
+        const launchProvider =
+          body.provider ||
+          cfg.roles?.agents ||
+          cfg.defaultProvider;
+        const launchModel =
+          body.model ||
+          cfg.models?.agents ||
+          undefined;
         const co = scaffoldCompany(
           root,
           plan,
           skillSearchDirs(root, bundledSkillsDir),
-          body.provider || cfg.roles?.agents || cfg.defaultProvider,
-          body.model || undefined
+          launchProvider,
+          launchModel
         );
         if (Array.isArray(planningHistory) && planningHistory.length) {
           co.savePlanningChat(planningHistory);

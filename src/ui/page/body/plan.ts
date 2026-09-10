@@ -19,6 +19,10 @@ export const PLAN = `<main id="viewPlan">
       <span class="planbar-divider" aria-hidden="true"></span>
       <label class="planbar-label muted" for="planName">Company name</label>
       <input type="text" id="planName">
+      <span class="planbar-divider" aria-hidden="true"></span>
+      <label class="planbar-label muted" for="agentsProviderSel" title="Default LLM for agents without a per-agent override">Agents</label>
+      <select id="agentsProviderSel" title="Default agent LLM source" style="font-size:0.72rem"></select>
+      <select id="agentsModelSel" title="Default agent model" style="font-size:0.72rem;max-width:9rem"></select>
       <button class="btn" id="launchBtn" onclick="launchPlan()">Launch company</button>
       <button class="btn danger" id="planDeleteBtn" onclick="deleteCurrentPlan()" title="Delete this plan">Delete plan</button>
     </div>
@@ -28,7 +32,10 @@ export const PLAN = `<main id="viewPlan">
       <div class="accentbar"></div>
       <div class="side-head-body">
         <div class="eyebrow">Studio</div>
-        <div class="side-title">Plan <select id="providerSel" style="margin-left:0.5rem;font-size:0.72rem"></select></div>
+        <div class="side-title">Plan
+          <select id="providerSel" title="Planning LLM source" style="margin-left:0.5rem;font-size:0.72rem"></select>
+          <select id="planningModelSel" title="Planning model" style="margin-left:0.35rem;font-size:0.72rem;max-width:9rem"></select>
+        </div>
       </div>
     </div>
     <div class="side-inner" style="display:flex;flex-direction:column;overflow:hidden;padding:0">
