@@ -2,28 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import type { AuditEvent } from "../types.js";
 import { parseFrontmatter } from "../util.js";
+import { listAgentFiles } from "../core/agent-files.js";
 import type { Company } from "../core/store.js";
 
-export function listAgentFiles(co: Company, agent: string): { path: string; size: number }[] {
-  const out: { path: string; size: number }[] = [];
-  const base = co.agentDir(agent);
-  const walk = (dir: string) => {
-    if (!fs.existsSync(dir)) return;
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, e.name);
-      if (e.isDirectory()) walk(full);
-      else out.push({ path: path.relative(co.dir, full), size: fs.statSync(full).size });
-    }
-  };
-  for (const sub of ["INBOX", "OUTBOX", "workspace"]) walk(path.join(base, sub));
-  if (fs.existsSync(path.join(base, "CHAT.md"))) {
-    out.push({
-      path: path.relative(co.dir, path.join(base, "CHAT.md")),
-      size: fs.statSync(path.join(base, "CHAT.md")).size,
-    });
-  }
-  return out;
-}
+export { listAgentFiles } from "../core/agent-files.js";
 
 export function listInbox(
   co: Company,
