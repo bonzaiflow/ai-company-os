@@ -26,6 +26,12 @@ import {
 import { registerShowCommands } from "./cli/show.js";
 import { registerDbCommands } from "./cli/db.js";
 import { registerOpsCommands } from "./cli/ops.js";
+import { registerConnectorCommands } from "./cli/connectors.js";
+import { registerPlansCommands } from "./cli/plans.js";
+import { registerSkillsCommands } from "./cli/skills.js";
+import { registerChatCommands } from "./cli/chat.js";
+import { registerConfigCommands } from "./cli/config.js";
+import { registerUploadCommands } from "./cli/upload.js";
 import { companyState, listAgentFiles } from "./cli/inspect.js";
 
 const ROOT = process.cwd();
@@ -74,6 +80,12 @@ program
 registerShowCommands(program, CTX);
 registerDbCommands(program, CTX);
 registerOpsCommands(program, CTX);
+registerConnectorCommands(program, CTX);
+registerPlansCommands(program, CTX);
+registerSkillsCommands(program, CTX);
+registerChatCommands(program, CTX);
+registerConfigCommands(program, CTX);
+registerUploadCommands(program, CTX);
 program
   .command("init")
   .description("create ai-company-os.json + companies/ + plans/ in the current directory")
