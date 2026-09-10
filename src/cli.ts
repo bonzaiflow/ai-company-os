@@ -16,25 +16,27 @@ import { normalizePlan, planInteractive, planOnce, renderPlan, savePlan } from "
 import { serveUi } from "./ui/server.js";
 import type { AgentSpec, ChatMessage, Plan } from "./types.js";
 import { c, readJson, slugify, writeJson } from "./util.js";
+import {
+  fail,
+  openCompany as openCompanyCtx,
+  out,
+  setJsonMode,
+  type CliCtx,
+} from "./cli/helpers.js";
+import { registerShowCommands } from "./cli/show.js";
+import { companyState, listAgentFiles } from "./cli/inspect.js";
 
 const ROOT = process.cwd();
 const BUNDLED_SKILLS = path.resolve(fileURLToPath(import.meta.url), "../../skills");
 const DEFAULT_RETRY_HEADROOM = 2;
+const CTX: CliCtx = { root: ROOT, bundledSkills: BUNDLED_SKILLS, json: false };
 
 function availableSkills(): string[] {
   return skillNames(ROOT, BUNDLED_SKILLS);
 }
 
 function openCompany(slug?: string): Company {
-  const all = Company.list(ROOT);
-  if (slug) return Company.open(ROOT, slug);
-  if (all.length === 1) return Company.open(ROOT, all[0]);
-  if (!all.length) {
-    console.error(c.red("no companies yet — run `ai-company-os plan` first"));
-    process.exit(1);
-  }
-  console.error(c.red(`multiple companies, pick one with -c: ${all.join(", ")}`));
-  process.exit(1);
+  return openCompanyCtx(CTX, slug);
 }
 
 function orgTree(co: Company): string {
@@ -56,9 +58,18 @@ function orgTree(co: Company): string {
 const program = new Command();
 program
   .name("ai-company-os")
-  .description("agent-swarm orchestrator for small local models")
-  .version("0.1.0");
+  .description("agent-swarm orchestrator for small local models — full CLI for humans and MCP agents")
+  .version("0.1.0")
+  .option("--json", "machine-readable JSON on stdout (for MCP / automation)")
+  .hook("preAction", (thisCommand) => {
+    const opts = thisCommand.opts() as { json?: boolean };
+    if (opts.json) {
+      setJsonMode(true);
+      CTX.json = true;
+    }
+  });
 
+registerShowCommands(program, CTX);
 program
   .command("init")
   .description("create ai-company-os.json + companies/ + plans/ in the current directory")
@@ -150,46 +161,83 @@ program
 program
   .command("companies")
   .description("list companies in this workspace")
-  .action(() => {
-    for (const slug of Company.list(ROOT)) {
+  .option("--json", "JSON output")
+  .action((opts) => {
+    if (opts.json) setJsonMode(true);
+    const list = Company.list(ROOT).map((slug) => {
       const co = Company.open(ROOT, slug);
       const tasks = co.listTasks();
-      const open = tasks.filter((t) => !["done", "failed"].includes(t.status)).length;
-      console.log(
-        `${c.bold(slug.padEnd(28))} agents:${co.listAgents().length}  tasks:${tasks.length} (${open} open)  queue:${co.queue().length}`
-      );
-    }
+      const open = tasks.filter((t) => !["done", "failed"].includes(t.status));
+      return {
+        slug,
+        name: co.meta.name,
+        goal: co.meta.goal,
+        paused: !!co.meta.paused,
+        agents: co.listAgents().length,
+        agentRanks: co.listAgents().map((a) => a.rank),
+        tasksTotal: tasks.length,
+        tasksOpen: open.length,
+        tasksDone: tasks.filter((t) => t.status === "done").length,
+        tasksFailed: tasks.filter((t) => t.status === "failed").length,
+        running: tasks.some((t) => t.status === "running"),
+        queue: co.queue().length,
+        spentTokens: co.spent().tokens,
+        budgetTokens: co.meta.budget.tokens,
+      };
+    });
+    out({ companies: list }, () => {
+      for (const co of list) {
+        console.log(
+          `${c.bold(co.slug.padEnd(28))} agents:${co.agents}  tasks:${co.tasksTotal} (${co.tasksOpen} open)  queue:${co.queue}`
+        );
+      }
+    });
   });
 
 program
   .command("status")
   .description("org chart, queue and budget of a company")
   .option("-c, --company <slug>")
+  .option("--json", "JSON output")
   .action((opts) => {
+    if (opts.json) setJsonMode(true);
     const co = openCompany(opts.company);
     const meta = co.meta;
     const spent = co.spent();
-    console.log(c.bold(`\n${meta.name}`) + c.dim(`  (${meta.slug})`));
-    console.log(c.dim(meta.goal) + "\n");
-    console.log(orgTree(co) + "\n");
-    const q = co.queue();
-    console.log(c.bold(`Queue (${q.length}):`));
-    for (const id of q.slice(0, 10)) {
-      const t = co.loadTask(id);
-      console.log(`  ${c.cyan(id)} ${t.title} ${c.dim(`→ ${t.assignee}`)}`);
-    }
     const tasks = co.listTasks();
+    const q = co.queue();
     const byStatus = (s: string) => tasks.filter((t) => t.status === s).length;
-    console.log(
-      c.dim(
-        `\nTasks: ${tasks.length} total · ${byStatus("done")} done · ${byStatus("waiting")} waiting · ${byStatus("failed")} failed`
-      )
-    );
-    console.log(
-      c.dim(
-        `Budget: ${spent.tokens.toLocaleString()}/${meta.budget.tokens.toLocaleString()} tokens`
-      )
-    );
+    const payload = {
+      ...companyState(co),
+      pendingApprovals: listApprovals(co, "pending").length,
+      summary: {
+        tasksTotal: tasks.length,
+        done: byStatus("done"),
+        waiting: byStatus("waiting"),
+        failed: byStatus("failed"),
+        running: byStatus("running"),
+        queued: byStatus("queued"),
+        queueLength: q.length,
+      },
+    };
+    out(payload, () => {
+      console.log(c.bold(`\n${meta.name}`) + c.dim(`  (${meta.slug})`));
+      console.log(c.dim(meta.goal) + "\n");
+      console.log(orgTree(co) + "\n");
+      console.log(c.bold(`Queue (${q.length}):`));
+      for (const id of q.slice(0, 10)) {
+        const t = co.loadTask(id);
+        console.log(`  ${c.cyan(id)} ${t.title} ${c.dim(`→ ${t.assignee}`)}`);
+      }
+      console.log(
+        c.dim(
+          `\nTasks: ${tasks.length} total · ${byStatus("done")} done · ${byStatus("waiting")} waiting · ${byStatus("failed")} failed`
+        )
+      );
+      console.log(
+        c.dim(`Budget: ${spent.tokens.toLocaleString()}/${meta.budget.tokens.toLocaleString()} tokens`)
+      );
+    });
   });
 
 program
@@ -262,21 +310,26 @@ program
   .command("queue")
   .description("list all tasks")
   .option("-c, --company <slug>")
+  .option("--json", "JSON output")
   .action((opts) => {
+    if (opts.json) setJsonMode(true);
     const co = openCompany(opts.company);
-    for (const t of co.listTasks()) {
-      const color =
-        t.status === "done"
-          ? c.green
-          : t.status === "failed"
-            ? c.red
-            : t.status === "waiting"
-              ? c.yellow
-              : c.cyan;
-      console.log(
-        `${c.bold(t.id)} ${color(t.status.padEnd(8))} ${c.dim((t.parent ?? "root").padEnd(9))} ${t.assignee.padEnd(16)} ${t.title}`
-      );
-    }
+    const tasks = co.listTasks();
+    out({ tasks, queue: co.queue() }, () => {
+      for (const t of tasks) {
+        const color =
+          t.status === "done"
+            ? c.green
+            : t.status === "failed"
+              ? c.red
+              : t.status === "waiting"
+                ? c.yellow
+                : c.cyan;
+        console.log(
+          `${c.bold(t.id)} ${color(t.status.padEnd(8))} ${c.dim((t.parent ?? "root").padEnd(9))} ${t.assignee.padEnd(16)} ${t.title}`
+        );
+      }
+    });
   });
 
 program
@@ -284,14 +337,19 @@ program
   .description("tail the audit log")
   .option("-c, --company <slug>")
   .option("-n <lines>", "number of events", "30")
+  .option("--json", "JSON output")
   .action((opts) => {
+    if (opts.json) setJsonMode(true);
     const co = openCompany(opts.company);
-    for (const e of co.auditTail(Number(opts.n))) {
-      const flag = e.ok ? c.green("OK") : c.red("ERR");
-      console.log(
-        `${c.dim(e.ts)} ${flag} ${c.bold(e.type.padEnd(18))} ${c.cyan(e.taskId ?? "")} ${c.dim(e.agent ?? "")} ${e.detail ?? ""}`
-      );
-    }
+    const events = co.auditTail(Number(opts.n));
+    out({ events }, () => {
+      for (const e of events) {
+        const flag = e.ok ? c.green("OK") : c.red("ERR");
+        console.log(
+          `${c.dim(e.ts)} ${flag} ${c.bold(e.type.padEnd(18))} ${c.cyan(e.taskId ?? "")} ${c.dim(e.agent ?? "")} ${e.detail ?? ""}`
+        );
+      }
+    });
   });
 
 program
@@ -299,15 +357,29 @@ program
   .description("show an agent's profile and recent thoughts")
   .argument("<name>")
   .option("-c, --company <slug>")
+  .option("--json", "JSON output")
   .action((name: string, opts) => {
+    if (opts.json) setJsonMode(true);
     const co = openCompany(opts.company);
     const dir = co.agentDir(name);
-    console.log(fs.readFileSync(path.join(dir, "profile.md"), "utf8"));
+    const profilePath = path.join(dir, "profile.md");
+    if (!fs.existsSync(profilePath)) return fail(`no agent named ${name}`);
+    const profile = fs.readFileSync(profilePath, "utf8");
     const ws = path.join(dir, "workspace");
-    if (fs.existsSync(ws)) {
-      console.log(c.bold("Workspace files:"));
-      for (const f of fs.readdirSync(ws)) console.log("  " + path.join(ws, f));
-    }
+    const workspace = fs.existsSync(ws)
+      ? fs.readdirSync(ws).map((f) => ({ file: f, path: path.join("agents", name, "workspace", f) }))
+      : [];
+    const agent = co.loadAgent(name);
+    out(
+      { agent, profile, files: listAgentFiles(co, name), workspace },
+      () => {
+        console.log(profile);
+        if (workspace.length) {
+          console.log(c.bold("Workspace files:"));
+          for (const f of workspace) console.log("  " + f.path);
+        }
+      }
+    );
   });
 
 program
