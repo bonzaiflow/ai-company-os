@@ -3,8 +3,16 @@ import { resolveLlm, resolveProvider } from "../llm/resolve.js";
 import { AsyncMutex, extractJson, nowIso, truncate } from "../util.js";
 import { consumeApproval, findDecision, requestApproval } from "./governance.js";
 import { ACTION_SCHEMA, stepPrompt, systemPrompt } from "./prompts.js";
+import {
+  claimReadyWave,
+  promoteWaitingParents,
+  requeueStuckRunning,
+} from "./queue.js";
 import type { Company } from "./store.js";
 import { resolveToolName, toolsFor, type Tool } from "./tools.js";
+
+export { PRIORITY_RANK, raiseTaskPriority } from "./priority.js";
+export { claimReadyWave, flushQueue, requeueStuckRunning } from "./queue.js";
 
 export interface TickResult {
   status: "worked" | "idle" | "budget" | "provider" | "stopped";
@@ -15,144 +23,6 @@ export interface TickResult {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const DEFAULT_MAX_ATTEMPTS = 3;
-
-export const PRIORITY_RANK: Record<Task["priority"], number> = {
-  low: 0,
-  normal: 1,
-  high: 2,
-};
-
-const PRIORITY_UP: Record<Task["priority"], Task["priority"]> = {
-  low: "normal",
-  normal: "high",
-  high: "high",
-};
-
-/** Open descendants first (must finish before parent), then the task itself. */
-function openDescendantsThenSelf(co: Company, id: string): Task[] {
-  const t = co.loadTask(id);
-  const out: Task[] = [];
-  for (const c of co.children(id)) {
-    if (c.status === "done" || c.status === "failed") continue;
-    out.push(...openDescendantsThenSelf(co, c.id));
-  }
-  if (t.status !== "done" && t.status !== "failed") out.push(t);
-  return out;
-}
-
-/** Raise a task's priority one step (low→normal→high). Unfinished children
- * in the dependency chain are raised to at least the same level and moved
- * ahead in the queue so they can run before the parent. Waiting parents are
- * parked in the queue immediately under their blockers.
- * Pass force:true to re-assert placement even when already high + front. */
-export function raiseTaskPriority(
-  co: Company,
-  id: string,
-  opts: { force?: boolean } = {}
-):
-  | { ok: true; priority: Task["priority"]; chain: string[]; moved: string[]; forced?: boolean }
-  | { ok: false; error: string; code?: string } {
-  let task: Task;
-  try {
-    task = co.loadTask(id);
-  } catch {
-    return { ok: false, error: "task not found" };
-  }
-  if (task.status === "done" || task.status === "failed") {
-    return { ok: false, error: `${id} is ${task.status} — priority can't be changed` };
-  }
-  if (task.status === "running") {
-    return { ok: false, error: `${id} is already running` };
-  }
-
-  const next = PRIORITY_UP[task.priority];
-  const chain = openDescendantsThenSelf(co, id);
-  const raised: string[] = [];
-  for (const t of chain) {
-    if (PRIORITY_RANK[t.priority] < PRIORITY_RANK[next]) {
-      t.priority = next;
-      co.saveTask(t);
-      raised.push(t.id);
-    }
-  }
-
-  // Blockers first (queued children), then park this task right under them.
-  const blockers = chain.filter((t) => t.id !== id && t.status === "queued").map((t) => t.id);
-  co.prioritizeInQueue(blockers);
-
-  const qBefore = co.queue();
-  const afterId = blockers.length ? blockers[blockers.length - 1]! : null;
-  const alreadyPlaced =
-    afterId
-      ? qBefore.indexOf(id) === qBefore.indexOf(afterId) + 1
-      : qBefore[0] === id;
-
-  if (task.status === "queued" || task.status === "waiting") {
-    co.placeInQueueAfter(id, afterId);
-  }
-
-  const moved = [...blockers];
-  if (task.status === "queued" || task.status === "waiting") moved.push(id);
-
-  if (!raised.length && alreadyPlaced && task.priority === "high" && !opts.force) {
-    const waitingOn = chain.filter((t) => t.id !== id);
-    return {
-      ok: false,
-      code: "already_front",
-      error: waitingOn.length
-        ? `${id} is already high priority and queued right under ${waitingOn.map((t) => t.id).join(", ")}`
-        : `${id} is already highest priority and at the front of the queue`,
-    };
-  }
-
-  co.audit({
-    type: "task.priority",
-    ok: true,
-    taskId: id,
-    detail:
-      (opts.force ? "forced " : "") +
-      `→ ${next}` +
-      (blockers.length ? `; under ${blockers.join(",")}` : "") +
-      (chain.length > 1 ? `; deps ${chain.map((t) => t.id).join(",")}` : ""),
-  });
-  return {
-    ok: true,
-    priority: next,
-    chain: chain.map((t) => t.id),
-    moved,
-    forced: !!opts.force,
-  };
-}
-
-/** Fail every queued/waiting task and clear queue.json. Running tasks are left alone
- * (cooperative stop is a separate control). Skips parent-wake so a bulk flush does
- * not re-enqueue anything mid-pass. */
-export function flushQueue(co: Company): { flushed: string[]; leftRunning: string[] } {
-  const flushed: string[] = [];
-  const leftRunning: string[] = [];
-  for (const t of co.listTasks()) {
-    if (t.status === "running") {
-      leftRunning.push(t.id);
-      continue;
-    }
-    if (t.status !== "queued" && t.status !== "waiting") continue;
-    t.status = "failed";
-    t.result = "FLUSHED by owner — removed from queue";
-    co.saveTask(t);
-    flushed.push(t.id);
-  }
-  co.clearQueue();
-  if (flushed.length) {
-    co.audit({
-      type: "queue.flushed",
-      ok: true,
-      detail:
-        `${flushed.length} task${flushed.length === 1 ? "" : "s"} flushed` +
-        (leftRunning.length ? `; ${leftRunning.length} still running` : ""),
-    });
-  }
-  return { flushed, leftRunning };
-}
 
 const storeLocks = new Map<string, AsyncMutex>();
 function storeLockFor(co: Company): AsyncMutex {
@@ -269,39 +139,6 @@ function taskDepth(co: Company, task: Task): number {
   return depth;
 }
 
-/** Crash-safety sweep: re-enqueue waiting parents whose children all finished
- * (normally this happens the moment the last child completes). */
-function promoteWaitingParents(co: Company): void {
-  for (const t of co.listTasks()) {
-    if (t.status !== "waiting") continue;
-    const children = co.children(t.id);
-    if (children.length && children.every((c) => c.status === "done" || c.status === "failed")) {
-      if (!co.queue().includes(t.id)) {
-        t.status = "queued";
-        co.saveTask(t);
-        co.enqueue(t.id);
-      }
-    }
-  }
-}
-
-/** Recover tasks orphaned in "running" by a killed process (e.g. a dev-mode
- * server restart mid-tick). staleMinutes 0 = requeue all running tasks. */
-export function requeueStuckRunning(co: Company, staleMinutes = 0): number {
-  let n = 0;
-  for (const t of co.listTasks()) {
-    if (t.status !== "running") continue;
-    const ageMin = (Date.now() - Date.parse(t.updatedAt)) / 60_000;
-    if (ageMin < staleMinutes) continue;
-    t.status = "queued";
-    co.saveTask(t);
-    co.enqueue(t.id);
-    co.audit({ type: "task.recovered", ok: true, taskId: t.id, detail: "was stuck in running" });
-    n++;
-  }
-  return n;
-}
-
 const MAX_CONTINUATIONS = 12;
 const MAX_STUCK_TICKS = 3; // consecutive no-progress ticks before a task truly fails
 
@@ -405,51 +242,6 @@ function failTask(co: Company, task: Task, agent: string, reason: string): void 
       co.enqueue(parent.id);
     }
   }
-}
-
-/** Claim up to maxParallel queued tasks with distinct assignees and no
- * unfinished children. Marks them running and removes them from the queue.
- * Higher priority wins; queue order breaks ties. */
-export function claimReadyWave(co: Company, maxParallel = 4): string[] {
-  promoteWaitingParents(co);
-  const busy = new Set(
-    co.listTasks().filter((t) => t.status === "running").map((t) => t.assignee)
-  );
-  const queue = co.queue();
-  const candidates: { t: Task; idx: number }[] = [];
-  for (let i = 0; i < queue.length; i++) {
-    const id = queue[i]!;
-    let t: Task;
-    try {
-      t = co.loadTask(id);
-    } catch {
-      continue;
-    }
-    if (t.status !== "queued") continue;
-    const kids = co.children(id);
-    if (kids.some((c) => c.status !== "done" && c.status !== "failed")) continue;
-    candidates.push({ t, idx: i });
-  }
-  candidates.sort((a, b) => {
-    const pd = PRIORITY_RANK[b.t.priority] - PRIORITY_RANK[a.t.priority];
-    return pd !== 0 ? pd : a.idx - b.idx;
-  });
-
-  const claim: string[] = [];
-  for (const { t } of candidates) {
-    if (claim.length >= maxParallel) break;
-    if (busy.has(t.assignee)) continue;
-    claim.push(t.id);
-    busy.add(t.assignee);
-  }
-  if (!claim.length) return [];
-  co.dequeueMany(claim);
-  for (const id of claim) {
-    const t = co.loadTask(id);
-    t.status = "running";
-    co.saveTask(t);
-  }
-  return claim;
 }
 
 /** Run one scheduler tick: pop the next queued task and let its assignee work
