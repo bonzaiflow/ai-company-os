@@ -4,6 +4,7 @@ import path from "node:path";
 import type { Command } from "commander";
 import { loadConfig } from "../config.js";
 import { createProvider } from "../llm/index.js";
+import { resolveHelperLlm } from "../llm/resolve.js";
 import { c } from "../util.js";
 import {
   companyOption,
@@ -313,34 +314,10 @@ export function registerDbCommands(program: Command, ctx: CliCtx): void {
           }
 
           const cfg = loadConfig(ctx.root);
-          const meta = co.meta;
-          let roleKind: "execution" | "agents" | "default" = "default";
-          let roleUsed: string;
-          let modelUsed: string | undefined;
-          if (meta.roles?.execution) {
-            roleKind = "execution";
-            roleUsed = meta.roles.execution;
-            modelUsed = meta.models?.execution ?? cfg.models?.execution;
-          } else if (meta.roles?.agents) {
-            roleKind = "agents";
-            roleUsed = meta.roles.agents;
-            modelUsed = meta.models?.agents ?? cfg.models?.agents ?? meta.model;
-          } else if (cfg.roles?.execution) {
-            roleKind = "execution";
-            roleUsed = cfg.roles.execution;
-            modelUsed = cfg.models?.execution;
-          } else if (cfg.roles?.agents) {
-            roleKind = "agents";
-            roleUsed = cfg.roles.agents;
-            modelUsed = cfg.models?.agents ?? meta.model;
-          } else {
-            roleUsed = meta.provider || cfg.defaultProvider;
-            modelUsed = meta.model;
-          }
-
+          const resolved = resolveHelperLlm(cfg, co.meta);
           let provider;
           try {
-            provider = createProvider(cfg, roleUsed, modelUsed);
+            provider = createProvider(cfg, resolved.provider, resolved.model);
           } catch (e) {
             fail((e as Error).message);
           }
@@ -369,7 +346,7 @@ export function registerDbCommands(program: Command, ctx: CliCtx): void {
               fail(`model did not return a read-only query: ${String(result.content ?? "").slice(0, 500)}`);
             }
             out(
-              { sql, role: roleKind, provider: provider.name, model: provider.model },
+              { sql, role: resolved.roleKind, provider: provider.name, model: provider.model },
               () => console.log(sql)
             );
           } catch (e) {

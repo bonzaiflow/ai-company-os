@@ -58,6 +58,7 @@ import { runDaemon } from "../core/scheduler.js";
 import { flushQueue, raiseTaskPriority, requeueStuckRunning, runLoop, tick, tickWave } from "../core/runtime.js";
 import { Company, scaffoldCompany } from "../core/store.js";
 import { createProvider, resolveCliCommand } from "../llm/index.js";
+import { resolveHelperLlm, resolveProvider } from "../llm/resolve.js";
 import { normalizePlan, planTurn, plannerSystem } from "../planner.js";
 import type { AuditEvent, ChatMessage, ConnectorsConfig, Plan, Task } from "../types.js";
 import { c, parseFrontmatter, readJson, slugify, writeJson } from "../util.js";
@@ -1012,11 +1013,13 @@ export function serveUi(
       if (req.method === "POST" && url.pathname === "/api/plan/chat") {
         const body = await readBody(req);
         const cfg = loadConfig(root);
-        const provider = createProvider(
-          cfg,
-          body.provider || cfg.roles?.planning || undefined,
-          body.model || undefined
-        );
+        const provider = resolveProvider(cfg, {
+          role: "planning",
+          request: {
+            provider: body.provider || undefined,
+            model: body.model || undefined,
+          },
+        });
         const history: ChatMessage[] = Array.isArray(body.history) ? body.history : [];
         // the planner should know about data the owner already uploaded
         let uploadsNote = "";
@@ -1407,34 +1410,10 @@ export function serveUi(
 
         const cfg = loadConfig(root);
         const meta = co.meta;
-        // Prefer execution (fast structured helper), else agents — company overrides win.
-        let roleKind: "execution" | "agents" | "default" = "default";
-        let roleUsed: string;
-        let modelUsed: string | undefined;
-        if (meta.roles?.execution) {
-          roleKind = "execution";
-          roleUsed = meta.roles.execution;
-          modelUsed = meta.models?.execution ?? cfg.models?.execution;
-        } else if (meta.roles?.agents) {
-          roleKind = "agents";
-          roleUsed = meta.roles.agents;
-          modelUsed = meta.models?.agents ?? cfg.models?.agents ?? meta.model;
-        } else if (cfg.roles?.execution) {
-          roleKind = "execution";
-          roleUsed = cfg.roles.execution;
-          modelUsed = cfg.models?.execution;
-        } else if (cfg.roles?.agents) {
-          roleKind = "agents";
-          roleUsed = cfg.roles.agents;
-          modelUsed = cfg.models?.agents ?? meta.model;
-        } else {
-          roleUsed = meta.provider || cfg.defaultProvider;
-          modelUsed = meta.model;
-        }
-
+        const resolved = resolveHelperLlm(cfg, meta);
         let provider;
         try {
-          provider = createProvider(cfg, roleUsed, modelUsed);
+          provider = createProvider(cfg, resolved.provider, resolved.model);
         } catch (e) {
           json(res, { error: (e as Error).message }, 400);
           return;
@@ -1472,7 +1451,7 @@ export function serveUi(
           }
           json(res, {
             sql,
-            role: roleKind,
+            role: resolved.roleKind,
             provider: provider.name,
             model: provider.model,
           });

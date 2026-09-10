@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Command } from "commander";
 import { loadConfig } from "../config.js";
-import { createProvider } from "../llm/index.js";
+import { resolveProvider } from "../llm/resolve.js";
 import { skillNames, skillSearchDirs } from "../core/skills.js";
 import { scaffoldCompany } from "../core/store.js";
 import { normalizePlan, plannerSystem, planTurn } from "../planner.js";
@@ -121,11 +121,13 @@ export function registerPlansCommands(program: Command, ctx: CliCtx): void {
         const message = words.join(" ").trim();
         if (!message) fail("message required");
         const cfg = loadConfig(ctx.root);
-        const provider = createProvider(
-          cfg,
-          opts.provider || cfg.roles?.planning || undefined,
-          opts.model || undefined
-        );
+        const provider = resolveProvider(cfg, {
+          role: "planning",
+          request: {
+            provider: opts.provider || undefined,
+            model: opts.model || undefined,
+          },
+        });
         const history = readJson<ChatMessage[]>(planChatFile(ctx.root, slug), []);
         let uploadsNote = "";
         const upDir = path.join(ctx.root, "plans", slug, "uploads");

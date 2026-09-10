@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { initWorkspace, loadConfig, resolveUiWorkspaceRoot, setPersistedWorkspaceRoot } from "./config.js";
-import { createProvider } from "./llm/index.js";
+import { resolveProvider } from "./llm/resolve.js";
 import { exportCompanyZip, type CompanyExportMode } from "./core/export.js";
 import { listApprovals } from "./core/governance.js";
 import { runDaemon } from "./core/scheduler.js";
@@ -106,7 +106,13 @@ program
   .option("--launch", "with --auto: launch the company immediately")
   .action(async (goalWords: string[], opts) => {
     const cfg = loadConfig(ROOT);
-    const provider = createProvider(cfg, opts.provider || cfg.roles?.planning, opts.model);
+    const provider = resolveProvider(cfg, {
+      role: "planning",
+      request: {
+        provider: opts.provider || undefined,
+        model: opts.model || undefined,
+      },
+    });
     const goal = goalWords.join(" ");
     const skills = availableSkills();
 

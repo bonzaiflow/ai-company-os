@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { createProvider, streamChat } from "../llm/index.js";
+import { streamChat } from "../llm/index.js";
+import { resolveProvider } from "../llm/resolve.js";
 import type { ChatMessage, AiCompanyOsConfig, Task } from "../types.js";
 import { extractJson, extractPartialJsonField, nowIso, truncate } from "../util.js";
 import type { Company } from "./store.js";
@@ -241,11 +242,11 @@ export async function* chiefChatStream(
     return;
   }
   const meta = co.meta;
-  const provider = createProvider(
-    cfg,
-    chief.provider || meta.roles?.agents || cfg.roles?.agents || meta.provider,
-    chief.model || meta.models?.agents || cfg.models?.agents || meta.model
-  );
+  const provider = resolveProvider(cfg, {
+    role: "agents",
+    meta,
+    agent: chief,
+  });
 
   const messages: ChatMessage[] = [
     { role: "system", content: chiefChatSystem(co) },

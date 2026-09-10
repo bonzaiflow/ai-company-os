@@ -1,5 +1,5 @@
 import type { AgentAction, AiCompanyOsConfig, LLMProvider, Task } from "../types.js";
-import { createProvider } from "../llm/index.js";
+import { resolveLlm, resolveProvider } from "../llm/resolve.js";
 import { AsyncMutex, extractJson, nowIso, truncate } from "../util.js";
 import { consumeApproval, findDecision, requestApproval } from "./governance.js";
 import { ACTION_SCHEMA, stepPrompt, systemPrompt } from "./prompts.js";
@@ -222,9 +222,11 @@ async function parseAction(
   try {
     return extractJson(raw) as AgentAction;
   } catch (err) {
-    const execRole = cfg.roles?.execution;
-    if (!execRole) throw err;
-    const fixer = createProvider(cfg, execRole, cfg.models?.execution);
+    const fixerOpts = { role: "execution" as const, meta: co.meta };
+    const r = resolveLlm(cfg, fixerOpts);
+    // Only attempt repair when an execution role is configured (workspace or company)
+    if (r.source !== "company_roles" && r.source !== "workspace_roles") throw err;
+    const fixer = resolveProvider(cfg, fixerOpts);
     const res = await fixer.chat(
       [
         {
@@ -514,11 +516,11 @@ export async function tick(
   }
   let provider: LLMProvider;
   try {
-    provider = createProvider(
-      cfg,
-      agent.provider || meta.roles?.agents || cfg.roles?.agents || meta.provider,
-      agent.model || meta.models?.agents || cfg.models?.agents || meta.model
-    );
+    provider = resolveProvider(cfg, {
+      role: "agents",
+      meta,
+      agent,
+    });
   } catch (e) {
     // configuration problem (unknown provider, missing key) — not the task's
     // fault: keep it queued and surface the problem to the operator
