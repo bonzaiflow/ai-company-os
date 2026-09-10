@@ -39,8 +39,9 @@ Workspace path for the CLI is **cwd** (unlike the UI’s persisted workspace pic
 | `plans list` / `plans show <slug>` | `GET /api/plans`, `GET /api/plan` |
 | `plans chat <slug> <msg…>` | `POST /api/plan/chat` |
 | `plans upload <slug> <file>` | `POST /api/plan/upload` |
+| `plans launch <slug>` | `POST /api/plan/launch` |
 | `plans delete <slug> --yes` | `POST /api/plan/delete` |
-| `launch <plan.json>` | `POST /api/plan/launch` |
+| `launch <plan.json>` | launch from a plan file path |
 
 ### Inspect (read)
 
@@ -53,7 +54,8 @@ Workspace path for the CLI is **cwd** (unlike the UI’s persisted workspace pic
 | `show task <id>` | task modal |
 | `show inbox <agent>` | agent INBOX / OUTBOX |
 | `show chat` / `show chat --planning` | chief chat / planning archive |
-| `show file <path>` / `show files [dir]` | file browser |
+| `show file <path>` / `show files [dir]` / `show write` | file browser (+ write profiles/notes) |
+| `show meta-set '<json>'` | patch company.json (policies, roles, …) |
 | `queue` / `log` / `agent <name>` | queue, audit tail, agent tab |
 
 ### Runtime

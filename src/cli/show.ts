@@ -217,4 +217,67 @@ export function registerShowCommands(program: Command, ctx: CliCtx): void {
         })
     )
   );
+
+  withJson(
+    companyOption(
+      show
+        .command("write")
+        .description("write a text file inside the company directory (profiles, notes, company.json…)")
+        .argument("<path>", "relative path to write")
+        .option("--file <path>", "read content from a local file")
+        .option("--content <text>", "inline content")
+        .option("--mkdir", "create parent directories")
+        .action((rel: string, opts) => {
+          const co = openCompany(ctx, opts.company);
+          let content = "";
+          if (opts.file) {
+            const src = path.resolve(String(opts.file));
+            if (!fs.existsSync(src)) fail(`file not found: ${src}`);
+            content = fs.readFileSync(src, "utf8");
+          } else if (opts.content !== undefined) {
+            content = String(opts.content);
+          } else {
+            fail("provide --file or --content");
+          }
+          try {
+            const full = safeCompanyPath(co, rel);
+            if (opts.mkdir) fs.mkdirSync(path.dirname(full), { recursive: true });
+            else if (!fs.existsSync(path.dirname(full))) {
+              fail(`parent directory missing (pass --mkdir): ${path.dirname(rel)}`);
+            }
+            fs.writeFileSync(full, content);
+            out(
+              { ok: true, path: rel, bytes: Buffer.byteLength(content) },
+              () => console.log(c.green(`wrote ${rel} (${Buffer.byteLength(content)} B)`))
+            );
+          } catch (e) {
+            fail((e as Error).message);
+          }
+        })
+    )
+  );
+
+  withJson(
+    companyOption(
+      show
+        .command("meta-set")
+        .description("merge a JSON patch into company.json (policies, roles, budget, connectors…)")
+        .argument("<json>", "inline JSON object or path to a JSON file")
+        .action((jsonArg: string, opts) => {
+          const co = openCompany(ctx, opts.company);
+          let patch: Record<string, unknown>;
+          try {
+            if (jsonArg.trim().startsWith("{")) patch = JSON.parse(jsonArg);
+            else {
+              const p = path.resolve(jsonArg);
+              patch = JSON.parse(fs.readFileSync(p, "utf8"));
+            }
+          } catch (e) {
+            fail(`invalid JSON: ${(e as Error).message}`);
+          }
+          const meta = co.saveMeta(patch as Parameters<typeof co.saveMeta>[0]);
+          out({ ok: true, meta }, () => console.log(c.green(`updated company.json for ${co.meta.slug}`)));
+        })
+    )
+  );
 }

@@ -3,8 +3,9 @@ import path from "node:path";
 import type { Command } from "commander";
 import { loadConfig } from "../config.js";
 import { createProvider } from "../llm/index.js";
-import { skillNames } from "../core/skills.js";
-import { plannerSystem, planTurn } from "../planner.js";
+import { skillNames, skillSearchDirs } from "../core/skills.js";
+import { scaffoldCompany } from "../core/store.js";
+import { normalizePlan, plannerSystem, planTurn } from "../planner.js";
 import type { ChatMessage, Plan } from "../types.js";
 import { c, readJson, slugify, writeJson } from "../util.js";
 import { fail, out, withJson, type CliCtx } from "./helpers.js";
@@ -193,6 +194,51 @@ export function registerPlansCommands(program: Command, ctx: CliCtx): void {
         out(
           { ok: true, slug, path: `uploads/${name}`, preview, parseError, bytes: buf.length },
           () => console.log(c.green(`uploaded → plans/${slug}/uploads/${name} (${buf.length} B)`))
+        );
+      })
+  );
+
+  withJson(
+    plans
+      .command("launch")
+      .description("launch a company from a draft plan slug (copies uploads, deletes draft)")
+      .argument("<slug>", "plan slug")
+      .option("-p, --provider <name>")
+      .option("-m, --model <model>")
+      .action((slugArg: string, opts) => {
+        const slug = slugify(slugArg);
+        const plan = readJson<Plan | null>(planFile(ctx.root, slug), null);
+        if (!plan) fail(`plan not found: ${slug}`);
+        const cfg = loadConfig(ctx.root);
+        const planningHistory = readJson<ChatMessage[]>(planChatFile(ctx.root, slug), []);
+        const co = scaffoldCompany(
+          ctx.root,
+          normalizePlan(plan),
+          skillSearchDirs(ctx.root, ctx.bundledSkills),
+          opts.provider || cfg.roles?.agents || cfg.defaultProvider,
+          opts.model || undefined
+        );
+        if (planningHistory.length) co.savePlanningChat(planningHistory);
+        const planUploads = path.join(ctx.root, "plans", slug, "uploads");
+        if (fs.existsSync(planUploads)) {
+          const dest = path.join(co.dir, "data", "uploads");
+          fs.mkdirSync(dest, { recursive: true });
+          for (const f of fs.readdirSync(planUploads)) {
+            fs.copyFileSync(path.join(planUploads, f), path.join(dest, f));
+          }
+          co.audit({
+            type: "upload.received",
+            ok: true,
+            detail: `from plan: ${fs.readdirSync(planUploads).join(", ")}`,
+          });
+        }
+        deletePlanFiles(ctx.root, slug);
+        out(
+          { ok: true, slug: co.meta.slug, name: co.meta.name, dir: co.dir },
+          () => {
+            console.log(c.green(`launched company "${co.meta.name}" → ${co.dir}`));
+            console.log(c.dim(`run it:  ai-company-os run -c ${co.meta.slug}`));
+          }
         );
       })
   );

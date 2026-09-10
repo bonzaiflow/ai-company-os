@@ -156,10 +156,29 @@ function launchPlan(plan: Plan, provider?: string, model?: string, planFile?: st
   if (Array.isArray(planningHistory) && planningHistory.length) {
     co.savePlanningChat(planningHistory);
   }
+  // carry plan-phase uploads into the company (same as UI launch)
+  const planSlug = planFile
+    ? path.basename(planFile) === "plan.json"
+      ? path.basename(path.dirname(path.resolve(planFile)))
+      : slug
+    : slug;
+  const planUploads = path.join(ROOT, "plans", planSlug, "uploads");
+  if (fs.existsSync(planUploads)) {
+    const dest = path.join(co.dir, "data", "uploads");
+    fs.mkdirSync(dest, { recursive: true });
+    for (const f of fs.readdirSync(planUploads)) {
+      fs.copyFileSync(path.join(planUploads, f), path.join(dest, f));
+    }
+    co.audit({
+      type: "upload.received",
+      ok: true,
+      detail: `from plan: ${fs.readdirSync(planUploads).join(", ")}`,
+    });
+  }
   // remove draft plan folder / legacy flat files after launch (same as UI)
-  fs.rmSync(path.join(ROOT, "plans", slug), { recursive: true, force: true });
-  fs.rmSync(path.join(ROOT, "plans", `${slug}.json`), { force: true });
-  fs.rmSync(path.join(ROOT, "plans", `${slug}.chat.json`), { force: true });
+  fs.rmSync(path.join(ROOT, "plans", planSlug), { recursive: true, force: true });
+  fs.rmSync(path.join(ROOT, "plans", `${planSlug}.json`), { force: true });
+  fs.rmSync(path.join(ROOT, "plans", `${planSlug}.chat.json`), { force: true });
   console.log(c.green(`launched company "${co.meta.name}" → ${co.dir}`));
   console.log(c.dim(`run it:  ai-company-os run -c ${co.meta.slug}`));
 }
