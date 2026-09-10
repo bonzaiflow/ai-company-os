@@ -24,6 +24,8 @@ import {
   type CliCtx,
 } from "./cli/helpers.js";
 import { registerShowCommands } from "./cli/show.js";
+import { registerDbCommands } from "./cli/db.js";
+import { registerOpsCommands } from "./cli/ops.js";
 import { companyState, listAgentFiles } from "./cli/inspect.js";
 
 const ROOT = process.cwd();
@@ -70,6 +72,8 @@ program
   });
 
 registerShowCommands(program, CTX);
+registerDbCommands(program, CTX);
+registerOpsCommands(program, CTX);
 program
   .command("init")
   .description("create ai-company-os.json + companies/ + plans/ in the current directory")
