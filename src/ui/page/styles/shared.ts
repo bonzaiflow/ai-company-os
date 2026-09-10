@@ -134,6 +134,23 @@ export const SHARED = `.accentbar { height: 3px; background: linear-gradient(90d
 .org-rank.worker  { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
 .org-name { font-size: 1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
 .org-role { font-family: "JetBrains Mono", monospace; font-size: 0.68rem; color: var(--muted); margin-top: 0.3rem; }
+.org-llm {
+  font-family: "JetBrains Mono", monospace; font-size: 0.62rem;
+  color: var(--muted); margin-top: 0.25rem; opacity: 0.9;
+}
+.org-llm.pinned { color: var(--accent, #60a5fa); opacity: 1; }
+.agent-llm {
+  margin-bottom: 0.75rem; padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+}
+.agent-llm-title { font-size: 0.72rem; font-weight: 600; margin-bottom: 0.35rem; }
+.agent-llm-row { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.agent-llm-row select {
+  flex: 1; min-width: 7rem; font-size: 0.78rem;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.4rem;
+}
+.agent-llm-hint { margin-top: 0.35rem; font-size: 0.68rem; }
 .org-tools {
   display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.55rem;
   padding-top: 0.5rem; border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent);

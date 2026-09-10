@@ -58,7 +58,7 @@ import { runDaemon } from "../core/scheduler.js";
 import { flushQueue, raiseTaskPriority, requeueStuckRunning, runLoop, tick, tickWave } from "../core/runtime.js";
 import { Company, scaffoldCompany } from "../core/store.js";
 import { createProvider, resolveCliCommand } from "../llm/index.js";
-import { resolveHelperLlm, resolveProvider } from "../llm/resolve.js";
+import { effectiveAgentLlm, resolveHelperLlm, resolveProvider } from "../llm/resolve.js";
 import { normalizePlan, planTurn, plannerSystem } from "../planner.js";
 import type { AuditEvent, ChatMessage, ConnectorsConfig, Plan, Task } from "../types.js";
 import { c, parseFrontmatter, readJson, slugify, writeJson } from "../util.js";
@@ -522,10 +522,12 @@ export function serveUi(
 
       if (req.method === "GET" && url.pathname === "/api/state") {
         const co = Company.open(root, url.searchParams.get("company") ?? "");
+        const cfg = loadConfig(root);
         const agents = co.listAgents().map((a) => {
           const profileFile = path.join(co.agentDir(a.name), "profile.md");
           return {
             ...a,
+            llm: effectiveAgentLlm(cfg, co, a),
             profile: fs.existsSync(profileFile) ? fs.readFileSync(profileFile, "utf8") : "",
             files: listAgentFiles(co, a.name),
           };
@@ -544,6 +546,53 @@ export function serveUi(
           planningChat: co.planningChatHistory(),
           dataSig: companyDataSig(co),
         });
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/agent/llm") {
+        const co = Company.open(root, url.searchParams.get("company") ?? "");
+        const name = String(url.searchParams.get("name") ?? "");
+        const cfg = loadConfig(root);
+        try {
+          const agent = co.loadAgent(name);
+          json(res, { name: agent.name, llm: effectiveAgentLlm(cfg, co, agent), agent });
+        } catch (e) {
+          json(res, { error: (e as Error).message }, 404);
+        }
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/agent/llm") {
+        const body = await readBody(req);
+        const co = Company.open(root, String(body.company ?? ""));
+        const name = String(body.name ?? "");
+        const cfg = loadConfig(root);
+        try {
+          const agent = co.loadAgent(name);
+          if (body.clear) {
+            agent.provider = undefined;
+            agent.model = undefined;
+          } else {
+            if (body.provider !== undefined && body.provider !== null && body.provider !== "") {
+              const p = String(body.provider);
+              if (!cfg.providers[p]) {
+                json(res, { error: `unknown provider "${p}"` }, 400);
+                return;
+              }
+              agent.provider = p;
+            } else if (body.provider === "" || body.provider === null) {
+              agent.provider = undefined;
+            }
+            if (body.model !== undefined) {
+              const m = String(body.model ?? "");
+              agent.model = m || undefined;
+            }
+          }
+          co.saveAgent(agent);
+          json(res, { ok: true, name: agent.name, llm: effectiveAgentLlm(cfg, co, agent), agent });
+        } catch (e) {
+          json(res, { error: (e as Error).message }, 400);
+        }
         return;
       }
 

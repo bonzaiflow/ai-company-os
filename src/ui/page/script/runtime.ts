@@ -179,6 +179,10 @@ function nodeFor(a, opts) {
   body.appendChild(el('span', 'org-rank ' + a.rank, a.rank));
   body.appendChild(el('div', 'org-name', a.name));
   body.appendChild(el('div', 'org-role', a.role));
+  if (a.llm && a.llm.provider) {
+    var srcLabel = a.llm.source === 'agent' ? a.llm.provider : (a.llm.provider + ' · default');
+    body.appendChild(el('div', 'org-llm' + (a.llm.source === 'agent' ? ' pinned' : ''), srcLabel));
+  }
   if (showTools && ((a.tools || []).length || (a.skills || []).length)) {
     var chips = el('div', 'org-tools');
     var hotTool = opts.static ? null : liveToolFor(a.name);
@@ -277,6 +281,7 @@ function renderAgentPanel() {
   body.style.overflowY = 'auto';
 
   if (selectedTab === 'overview') {
+    body.appendChild(renderAgentLlmEditor(a));
     body.appendChild(el('pre', 'doc', a.profile || '(no profile)'));
   } else if (selectedTab === 'tasks') {
     var mine = state.tasks.filter(function (t) { return t.assignee === a.name; });
@@ -304,6 +309,93 @@ function renderAgentPanel() {
     if (!evts.length) body.appendChild(el('div', 'muted', 'no events yet'));
     evts.slice().reverse().forEach(function (e) { body.appendChild(evtRow(e)); });
   }
+}
+
+function renderAgentLlmEditor(a) {
+  var box = el('div', 'agent-llm');
+  box.appendChild(el('div', 'agent-llm-title', 'LLM source'));
+  var row = el('div', 'agent-llm-row');
+  var srcSel = el('select', 'agent-llm-src');
+  var mdlSel = el('select', 'agent-llm-mdl');
+  var defOpt = document.createElement('option');
+  defOpt.value = '';
+  defOpt.textContent = 'Company / workspace default';
+  srcSel.appendChild(defOpt);
+  (cfg.providers || []).forEach(function (p) {
+    var o = document.createElement('option');
+    o.value = p; o.textContent = p;
+    srcSel.appendChild(o);
+  });
+  var overrideProvider = (a.provider || (a.llm && a.llm.override && a.llm.override.provider) || '');
+  var overrideModel = (a.model || (a.llm && a.llm.override && a.llm.override.model) || '');
+  if (overrideProvider) srcSel.value = overrideProvider;
+  else srcSel.value = '';
+
+  function fillModels(selected) {
+    mdlSel.innerHTML = '';
+    var none = document.createElement('option');
+    none.value = '';
+    none.textContent = srcSel.value ? '(provider default)' : '—';
+    mdlSel.appendChild(none);
+    if (!srcSel.value) {
+      mdlSel.disabled = true;
+      return Promise.resolve();
+    }
+    mdlSel.disabled = false;
+    return fetchModels(srcSel.value).then(function (d) {
+      (d.models || []).forEach(function (m) {
+        var o = document.createElement('option');
+        o.value = m; o.textContent = m;
+        mdlSel.appendChild(o);
+      });
+      if (selected && (d.models || []).indexOf(selected) !== -1) mdlSel.value = selected;
+      else if (selected) {
+        var custom = document.createElement('option');
+        custom.value = selected; custom.textContent = selected; custom.selected = true;
+        mdlSel.appendChild(custom);
+      }
+    });
+  }
+
+  function saveAgentLlm() {
+    var body = { company: companySlug, name: a.name };
+    if (!srcSel.value) body.clear = true;
+    else {
+      body.provider = srcSel.value;
+      body.model = mdlSel.value || '';
+    }
+    fetch('/api/agent/llm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.error) return;
+      a.provider = body.clear ? undefined : body.provider;
+      a.model = body.clear ? undefined : (body.model || undefined);
+      if (d.llm) a.llm = d.llm;
+      renderOrg(state.agents);
+      var hint = document.getElementById('agentLlmHint');
+      if (hint && d.llm) {
+        hint.textContent = 'Effective: ' + d.llm.provider + (d.llm.model ? '/' + d.llm.model : '') + ' (' + d.llm.source + ')';
+      }
+    });
+  }
+
+  srcSel.onchange = function () {
+    fillModels('').then(saveAgentLlm);
+  };
+  mdlSel.onchange = saveAgentLlm;
+  row.appendChild(srcSel);
+  row.appendChild(mdlSel);
+  box.appendChild(row);
+  var hint = el('div', 'muted agent-llm-hint', '');
+  hint.id = 'agentLlmHint';
+  if (a.llm) {
+    hint.textContent = 'Effective: ' + a.llm.provider + (a.llm.model ? '/' + a.llm.model : '') + ' (' + a.llm.source + ')';
+  }
+  box.appendChild(hint);
+  fillModels(overrideModel);
+  return box;
 }
 
 function planningChatDisplayContent(m) {
