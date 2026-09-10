@@ -26,12 +26,20 @@ export const handleDbRoutes: RouteHandler = async ({ root, req, res, url }) => {
           // read-only: opening the loop's live DB must never risk a write lock
           const db = new DatabaseSync(path.join(dir, f), { readOnly: true });
           const tables = (
-            db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as { name: string }[]
+            db
+              .prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+              )
+              .all() as { name: string }[]
           ).map((t) => {
-            const n = db.prepare(`SELECT COUNT(*) AS n FROM "${t.name}"`).get() as { n: number };
-            const cols = (db.prepare(`PRAGMA table_info("${t.name}")`).all() as { name: string }[]).map(
-              (c) => c.name
-            );
+            const n = db
+              .prepare(`SELECT COUNT(*) AS n FROM "${t.name}"`)
+              .get() as { n: number };
+            const cols = (
+              db.prepare(`PRAGMA table_info("${t.name}")`).all() as {
+                name: string;
+              }[]
+            ).map((c) => c.name);
             return { name: t.name, rows: n.n, columns: cols };
           });
           db.close();
@@ -64,18 +72,23 @@ export const handleDbRoutes: RouteHandler = async ({ root, req, res, url }) => {
       db = new DatabaseSync(dbPath, { readOnly: true });
       // validate identifiers against the real schema (no injection via names)
       const tableNames = (
-        db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[]
+        db
+          .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+          .all() as { name: string }[]
       ).map((t) => t.name);
       if (!tableNames.includes(table)) {
-      json(res, { error: "no such table" }, 404);
-      return true;
-    }
-      const cols = (db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]).map(
-        (c) => c.name
-      );
+        json(res, { error: "no such table" }, 404);
+        return true;
+      }
+      const cols = (
+        db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]
+      ).map((c) => c.name);
       const colSet = new Set(cols);
 
-      const pageSize = Math.min(500, Math.max(10, Number(url.searchParams.get("pageSize")) || 50));
+      const pageSize = Math.min(
+        500,
+        Math.max(10, Number(url.searchParams.get("pageSize")) || 50),
+      );
       const page = Math.max(0, Number(url.searchParams.get("page")) || 0);
       const sort = url.searchParams.get("sort") ?? "";
       const dir = url.searchParams.get("dir") === "desc" ? "DESC" : "ASC";
@@ -92,20 +105,32 @@ export const handleDbRoutes: RouteHandler = async ({ root, req, res, url }) => {
         params.push(`%${v}%`);
       }
       if (q) {
-        where.push("(" + cols.map((c) => `CAST("${c}" AS TEXT) LIKE ?`).join(" OR ") + ")");
+        where.push(
+          "(" +
+            cols.map((c) => `CAST("${c}" AS TEXT) LIKE ?`).join(" OR ") +
+            ")",
+        );
         cols.forEach(() => params.push(`%${q}%`));
       }
       const whereSql = where.length ? ` WHERE ${where.join(" AND ")}` : "";
-      const orderSql = sort && colSet.has(sort) ? ` ORDER BY "${sort}" ${dir}` : "";
+      const orderSql =
+        sort && colSet.has(sort) ? ` ORDER BY "${sort}" ${dir}` : "";
 
       const total = (
-        db.prepare(`SELECT COUNT(*) AS n FROM "${table}"${whereSql}`).get(...(params as never[])) as {
+        db
+          .prepare(`SELECT COUNT(*) AS n FROM "${table}"${whereSql}`)
+          .get(...(params as never[])) as {
           n: number;
         }
       ).n;
       const rows = db
-        .prepare(`SELECT * FROM "${table}"${whereSql}${orderSql} LIMIT ? OFFSET ?`)
-        .all(...([...params, pageSize, page * pageSize] as never[])) as Record<string, unknown>[];
+        .prepare(
+          `SELECT * FROM "${table}"${whereSql}${orderSql} LIMIT ? OFFSET ?`,
+        )
+        .all(...([...params, pageSize, page * pageSize] as never[])) as Record<
+        string,
+        unknown
+      >[];
 
       json(res, {
         columns: cols,
@@ -145,15 +170,17 @@ export const handleDbRoutes: RouteHandler = async ({ root, req, res, url }) => {
     try {
       db = new DatabaseSync(dbPath, { readOnly: true });
       const tableNames = (
-        db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[]
+        db
+          .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+          .all() as { name: string }[]
       ).map((t) => t.name);
       if (!tableNames.includes(table)) {
-      json(res, { error: "no such table" }, 404);
-      return true;
-    }
-      const cols = (db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]).map(
-        (c) => c.name
-      );
+        json(res, { error: "no such table" }, 404);
+        return true;
+      }
+      const cols = (
+        db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]
+      ).map((c) => c.name);
       const colSet = new Set(cols);
       const sort = url.searchParams.get("sort") ?? "";
       const dir = url.searchParams.get("dir") === "desc" ? "DESC" : "ASC";
@@ -168,15 +195,23 @@ export const handleDbRoutes: RouteHandler = async ({ root, req, res, url }) => {
         params.push(`%${v}%`);
       }
       if (q) {
-        where.push("(" + cols.map((c) => `CAST("${c}" AS TEXT) LIKE ?`).join(" OR ") + ")");
+        where.push(
+          "(" +
+            cols.map((c) => `CAST("${c}" AS TEXT) LIKE ?`).join(" OR ") +
+            ")",
+        );
         cols.forEach(() => params.push(`%${q}%`));
       }
       const whereSql = where.length ? ` WHERE ${where.join(" AND ")}` : "";
-      const orderSql = sort && colSet.has(sort) ? ` ORDER BY "${sort}" ${dir}` : "";
+      const orderSql =
+        sort && colSet.has(sort) ? ` ORDER BY "${sort}" ${dir}` : "";
       const EXPORT_CAP = 100_000;
       const rows = db
         .prepare(`SELECT * FROM "${table}"${whereSql}${orderSql} LIMIT ?`)
-        .all(...([...params, EXPORT_CAP] as never[])) as Record<string, unknown>[];
+        .all(...([...params, EXPORT_CAP] as never[])) as Record<
+        string,
+        unknown
+      >[];
 
       const esc = (v: unknown): string => {
         if (v === null || v === undefined) return "";
@@ -218,7 +253,11 @@ export const handleDbRoutes: RouteHandler = async ({ root, req, res, url }) => {
     }
     const sql = String(body.sql ?? "").trim();
     if (!/^\s*(select|pragma|with|explain)/i.test(sql)) {
-      json(res, { error: "read-only browser: only SELECT / PRAGMA / WITH queries" }, 400);
+      json(
+        res,
+        { error: "read-only browser: only SELECT / PRAGMA / WITH queries" },
+        400,
+      );
       return true;
     }
     try {
@@ -264,7 +303,11 @@ export const handleDbRoutes: RouteHandler = async ({ root, req, res, url }) => {
     try {
       const db = new DatabaseSync(dbPath, { readOnly: true });
       const tables = (
-        db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as {
+        db
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+          )
+          .all() as {
           name: string;
         }[]
       ).map((t) => t.name);
@@ -311,7 +354,9 @@ export const handleDbRoutes: RouteHandler = async ({ root, req, res, url }) => {
       "- Allowed: SELECT, WITH (CTE), PRAGMA, EXPLAIN. Never write/modify data.\n" +
       "- Use double-quoted identifiers when needed. Prefer LIMIT 50 unless the user asks otherwise.\n" +
       "- Stick to the schema below; do not invent tables or columns.\n" +
-      (focusTable ? `- The user is currently viewing table "${focusTable}". Prefer it when relevant.\n` : "") +
+      (focusTable
+        ? `- The user is currently viewing table "${focusTable}". Prefer it when relevant.\n`
+        : "") +
       `\nDatabase file: ${dbName}\nSchema:\n${schemaText}`;
 
     try {
@@ -330,7 +375,7 @@ export const handleDbRoutes: RouteHandler = async ({ root, req, res, url }) => {
             error: "model did not return a read-only query",
             raw: String(result.content ?? "").slice(0, 500),
           },
-          400
+          400,
         );
         return true;
       }
