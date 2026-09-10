@@ -16,6 +16,8 @@
     "dev": "tsc --watch",
     "dev:ui": "node scripts/dev-ui.mjs",
     "smoke": "npm run build && node dist/smoke.js",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check": "npm run build && npm run check:boundaries && npm run smoke",
     "mcp": "npm run build && node dist/mcp.js"
   },
   "engines": {
