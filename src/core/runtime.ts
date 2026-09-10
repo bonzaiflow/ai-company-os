@@ -2,7 +2,7 @@ import type { AgentAction, AiCompanyOsConfig, LLMProvider, Task } from "../types
 import { resolveProvider } from "../llm/resolve.js";
 import { AsyncMutex, nowIso, truncate } from "../util.js";
 import { parseAction } from "./action-parse.js";
-import { consumeApproval, findDecision, requestApproval } from "./governance.js";
+import { executeAgentAction, normalizeAgentAction } from "./agent-actions.js";
 import { ACTION_SCHEMA, stepPrompt, systemPrompt } from "./prompts.js";
 import {
   claimReadyWave,
@@ -11,22 +11,17 @@ import {
 } from "./queue.js";
 import type { Company } from "./store.js";
 import {
-  completeTask,
   failTask,
   MAX_STUCK_TICKS,
   retryOrFail,
   taskDepth,
 } from "./task-lifecycle.js";
-import { resolveToolName, toolsFor, type Tool } from "./tools.js";
+import type { TickOptions, TickResult } from "./tick-types.js";
+import { toolsFor } from "./tools.js";
 
 export { PRIORITY_RANK, raiseTaskPriority } from "./priority.js";
 export { claimReadyWave, flushQueue, requeueStuckRunning } from "./queue.js";
-
-export interface TickResult {
-  status: "worked" | "idle" | "budget" | "provider" | "stopped";
-  taskId?: string;
-  detail?: string;
-}
+export type { TickOptions, TickResult } from "./tick-types.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -41,22 +36,6 @@ function storeLockFor(co: Company): AsyncMutex {
   return m;
 }
 
-export interface TickOptions {
-  maxSteps?: number;
-  /** live progress callback for the CLI */
-  log?: (line: string) => void;
-  /** max depth of the delegation tree (root = 0) */
-  maxDepth?: number;
-  /** cooperative stop — checked between STEPS so a stop lands within one step,
-   * not one whole tick. The in-flight task is saved as a clean continuation. */
-  shouldStop?: () => boolean;
-  /** task already claimed+running (parallel wave); skip dequeue */
-  claimedId?: string;
-  /** serialize company file writes across parallel ticks */
-  storeLock?: AsyncMutex;
-  /** max tasks to claim per wave (distinct assignees) */
-  maxParallel?: number;
-}
 
 /** Run one scheduler tick: pop the next queued task and let its assignee work
  * it to a terminal decision (delegate / complete / step limit). */
@@ -234,21 +213,7 @@ export async function tick(
     );
     log(`  ${step}. ${action.action}${action.tool ? `:${action.tool}` : ""} — ${truncate(action.thought ?? "", 100)}`);
 
-    // small models put right intent in wrong slots — normalize instead of failing:
-    // {"action":"search"} → {"action":"tool","tool":"search"}; missing tool name
-    // inferred from the args shape (query→search, sql→sqlite, url→fetch, …)
-    if (!["tool", "delegate", "message", "complete"].includes(action.action)) {
-      if (tools.some((t) => t.name === (action.action as string))) {
-        action.tool = action.action as string;
-        action.action = "tool";
-      }
-    }
-    if (action.action === "tool" && action.tool) action.tool = resolveToolName(action.tool);
-    if (action.action === "tool" && !tools.some((t) => t.name === action.tool)) {
-      const a = action.args ?? {};
-      const inferred = a.query ? "search" : a.sql || a.db ? "sqlite" : a.url ? "fetch" : a.op || a.path ? "filesystem" : null;
-      if (inferred && tools.some((t) => t.name === inferred)) action.tool = inferred;
-    }
+    normalizeAgentAction(action, tools);
 
     // small models loop: detect the exact same action re-issued and interrupt
     const actionKey = JSON.stringify([action.action, action.tool, action.args]);
@@ -265,170 +230,27 @@ export async function tick(
     }
     lastActionKey = actionKey;
 
-    switch (action.action) {
-      case "tool": {
-        const tool = tools.find((t) => t.name === action.tool);
-        let observation: string;
-        let ok = true;
-        if (!tool) {
-          observation = `error: tool "${action.tool}" not available (you have: ${tools.map((t) => t.name).join(", ") || "none"})`;
-          ok = false;
-          await gate(() =>
-            co.appendThought(agent.name, task.id, `**observation:** ${truncate(observation, 800)}`)
-          );
-        } else if (meta.policies?.approveTools?.includes(tool.name)) {
-          // governance gate: this tool needs the owner's sign-off
-          const decision = findDecision(co, task.id, tool.name);
-          if (!decision) {
-            await gate(() => {
-              requestApproval(co, agent.name, task.id, tool.name, action.args ?? {});
-              task.status = "waiting";
-              co.saveTask(task);
-              co.appendThought(agent.name, task.id, `**parked:** awaiting owner approval for ${tool.name}`);
-            });
-            log(`  ⏸ ${task.id} parked — ${tool.name} needs owner approval`);
-            return { status: "worked", taskId: id, detail: `awaiting approval for ${tool.name}` };
-          }
-          if (decision.status === "pending") {
-            await gate(() => {
-              task.status = "waiting";
-              co.saveTask(task);
-            });
-            log(`  ⏸ ${task.id} still awaiting owner approval (${decision.id})`);
-            return { status: "worked", taskId: id, detail: `awaiting approval ${decision.id}` };
-          }
-          if (decision.status === "denied") {
-            await gate(() => consumeApproval(co, decision));
-            transcript.push(
-              `step ${step}: owner DENIED use of ${tool.name}${decision.note ? ` ("${decision.note}")` : ""} — do not try it again; work around it or complete honestly.`
-            );
-            break;
-          }
-          await gate(() => consumeApproval(co, decision)); // approved: execute this once
-          await gate(() => co.addSpent(0, 1));
-          try {
-            observation = await gate(() =>
-              tool.run({ company: co, agent: agent.name, shouldStop: opts.shouldStop }, action.args ?? {})
-            );
-          } catch (e) {
-            observation = `error: ${(e as Error).message}`;
-            ok = false;
-          }
-          await gate(() => {
-            co.audit({
-              type: `tool.${tool.name}`,
-              ok,
-              agent: agent.name,
-              taskId: task.id,
-              detail: `[owner-approved ${decision.id}] ` + truncate(JSON.stringify(action.args ?? {}), 180),
-            });
-            co.appendThought(agent.name, task.id, `**observation:** ${truncate(observation, 800)}`);
-          });
-          transcript.push(
-            `step ${step}: tool ${action.tool}(${JSON.stringify(action.args ?? {})}) [owner approved] → ${truncate(observation, 1600)}`
-          );
-          break;
-        } else {
-          await gate(() => co.addSpent(0, 1));
-          try {
-            observation = await gate(() =>
-              tool.run({ company: co, agent: agent.name, shouldStop: opts.shouldStop }, action.args ?? {})
-            );
-          } catch (e) {
-            observation = `error: ${(e as Error).message}`;
-            ok = false;
-          }
-          if (ok) toolOk++;
-          await gate(() => {
-            co.audit({
-              type: `tool.${tool.name}`,
-              ok,
-              agent: agent.name,
-              taskId: task.id,
-              detail: truncate(JSON.stringify(action.args ?? {}), 200),
-            });
-            co.appendThought(agent.name, task.id, `**observation:** ${truncate(observation, 800)}`);
-          });
-        }
-        transcript.push(
-          `step ${step}: tool ${action.tool}(${JSON.stringify(action.args ?? {})}) → ${truncate(observation, 1600)}`
-        );
-        break;
-      }
-
-      case "message": {
-        if (action.to && co.listAgents().some((a) => a.name === action.to)) {
-          await gate(() =>
-            co.sendMessage(agent.name, action.to!, `note re ${task.id}`, action.content ?? "", task.id)
-          );
-          transcript.push(`step ${step}: sent message to ${action.to}`);
-        } else {
-          transcript.push(`step ${step}: error: unknown agent "${action.to}"`);
-        }
-        break;
-      }
-
-      case "delegate": {
-        if (!reports.length) {
-          transcript.push(`step ${step}: error: you have no reports; do the work yourself and complete`);
-          break;
-        }
-        if (depth >= maxDepth) {
-          transcript.push(
-            `step ${step}: error: delegation depth limit reached; complete the task yourself`
-          );
-          break;
-        }
-        const subtasks = (action.subtasks ?? []).filter((s) => s.title && s.assignee);
-        const valid = subtasks.filter((s) => reports.some((r) => r.name === s.assignee));
-        if (!valid.length) {
-          transcript.push(
-            `step ${step}: error: no valid subtasks; assignees must be one of: ${reports.map((r) => r.name).join(", ")}`
-          );
-          break;
-        }
-        await gate(() => {
-          for (const s of valid.slice(0, 6)) {
-            const child = co.createTask({
-              title: s.title,
-              description: s.description || s.title,
-              assignee: s.assignee,
-              createdBy: agent.name,
-              parent: task.id,
-            });
-            co.enqueue(child.id);
-            co.sendMessage(
-              agent.name,
-              s.assignee,
-              `new task ${child.id}: ${s.title}`,
-              s.description || s.title,
-              child.id
-            );
-          }
-          task.status = "waiting";
-          co.saveTask(task);
-          co.appendThought(
-            agent.name,
-            task.id,
-            `**delegated:** ${valid.map((s) => `${s.assignee}←"${s.title}"`).join("; ")}`
-          );
-        });
-        log(`  ⇒ delegated ${valid.length} subtask(s), ${task.id} now waiting`);
-        return { status: "worked", taskId: id, detail: `delegated ${valid.length}` };
-      }
-
-      case "complete": {
-        await gate(() => {
-          completeTask(co, task, agent.name, action.result ?? "(no result text)");
-          co.appendThought(agent.name, task.id, `**completed:** ${truncate(action.result ?? "", 500)}`);
-        });
-        log(`  ✓ ${task.id} completed`);
-        return { status: "worked", taskId: id, detail: "completed" };
-      }
-
-      default:
-        transcript.push(`step ${step}: error: unknown action "${String(action.action)}"`);
-    }
+    const outcome = await executeAgentAction(
+      {
+        co,
+        task,
+        agent,
+        meta,
+        tools,
+        reports,
+        depth,
+        maxDepth,
+        step,
+        transcript,
+        gate,
+        log,
+        shouldStop: opts.shouldStop,
+        taskId: id!,
+      },
+      action
+    );
+    if (outcome.kind === "return") return outcome.result;
+    if (outcome.toolOkDelta) toolOk += outcome.toolOkDelta;
   }
 
   // Step limit is a PAUSE, not a failure. Most "failed" tasks were simply
