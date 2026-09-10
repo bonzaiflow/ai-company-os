@@ -103,3 +103,23 @@ export function resolveHelperLlm(
   }
   return { ...agents, roleKind: "default" };
 }
+
+/** Effective LLM for an agent in a company (for CLI/UI display). */
+export function effectiveAgentLlm(
+  cfg: AiCompanyOsConfig,
+  co: Company,
+  agent: AgentSpec
+): LlmResolution & { override: { provider?: string; model?: string } } {
+  const r = resolveLlm(cfg, {
+    role: "agents",
+    meta: co.meta,
+    agent,
+  });
+  return {
+    ...r,
+    override: {
+      provider: agent.provider || undefined,
+      model: agent.model || undefined,
+    },
+  };
+}

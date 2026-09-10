@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { initWorkspace, loadConfig, resolveUiWorkspaceRoot, setPersistedWorkspaceRoot } from "./config.js";
-import { resolveProvider } from "./llm/resolve.js";
+import { effectiveAgentLlm, resolveProvider } from "./llm/resolve.js";
 import { exportCompanyZip, type CompanyExportMode } from "./core/export.js";
 import { listApprovals } from "./core/governance.js";
 import { runDaemon } from "./core/scheduler.js";
@@ -33,6 +33,7 @@ import { registerChatCommands } from "./cli/chat.js";
 import { registerConfigCommands } from "./cli/config.js";
 import { registerUploadCommands } from "./cli/upload.js";
 import { registerGovernanceCommands } from "./cli/governance.js";
+import { registerAgentLlmCommands } from "./cli/agent-llm.js";
 import { companyState, listAgentFiles } from "./cli/inspect.js";
 
 const ROOT = process.cwd();
@@ -88,6 +89,7 @@ registerChatCommands(program, CTX);
 registerConfigCommands(program, CTX);
 registerUploadCommands(program, CTX);
 registerGovernanceCommands(program, CTX);
+registerAgentLlmCommands(program, CTX);
 program
   .command("init")
   .description("create ai-company-os.json + companies/ + plans/ in the current directory")
@@ -418,7 +420,7 @@ program
 
 program
   .command("agent")
-  .description("show an agent's profile and recent thoughts")
+  .description("show an agent's profile, effective LLM source, and recent thoughts")
   .argument("<name>")
   .option("-c, --company <slug>")
   .option("--json", "JSON output")
@@ -434,9 +436,15 @@ program
       ? fs.readdirSync(ws).map((f) => ({ file: f, path: path.join("agents", name, "workspace", f) }))
       : [];
     const agent = co.loadAgent(name);
+    const cfg = loadConfig(ROOT);
+    const llm = effectiveAgentLlm(cfg, co, agent);
     out(
-      { agent, profile, files: listAgentFiles(co, name), workspace },
+      { agent, llm, profile, files: listAgentFiles(co, name), workspace },
       () => {
+        console.log(
+          c.bold(`${agent.name}`) +
+            c.dim(`  llm=${llm.provider}${llm.model ? "/" + llm.model : ""} (${llm.source})`)
+        );
         console.log(profile);
         if (workspace.length) {
           console.log(c.bold("Workspace files:"));

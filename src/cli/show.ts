@@ -4,6 +4,8 @@ import path from "node:path";
 import { listApprovals } from "../core/governance.js";
 import { listCheckins } from "../core/checkin.js";
 import { publicState } from "../core/connectors/index.js";
+import { loadConfig } from "../config.js";
+import { effectiveAgentLlm } from "../llm/resolve.js";
 import { c } from "../util.js";
 import {
   companyOption,
@@ -63,14 +65,21 @@ export function registerShowCommands(program: Command, ctx: CliCtx): void {
     companyOption(
       show
         .command("org")
-        .description("organization chart / agent profiles")
+        .description("organization chart / agent profiles (with effective LLM sources)")
         .action((opts) => {
           const co = openCompany(ctx, opts.company);
-          const agents = co.listAgents();
+          const cfg = loadConfig(ctx.root);
+          const agents = co.listAgents().map((a) => ({
+            ...a,
+            llm: effectiveAgentLlm(cfg, co, a),
+          }));
           out({ agents }, () => {
             for (const a of agents) {
+              const llm =
+                `${a.llm.provider}${a.llm.model ? "/" + a.llm.model : ""}` +
+                (a.llm.source === "agent" ? "" : c.dim(`:${a.llm.source}`));
               console.log(
-                `${a.rank.padEnd(8)} ${c.bold(a.name.padEnd(18))} mgr=${(a.manager ?? "—").padEnd(16)} tools=${a.tools.join(",") || "—"} skills=${a.skills.join(",") || "—"}`
+                `${a.rank.padEnd(8)} ${c.bold(a.name.padEnd(18))} ${c.cyan(llm.padEnd(28))} mgr=${(a.manager ?? "—").padEnd(16)} tools=${a.tools.join(",") || "—"}`
               );
             }
           });
