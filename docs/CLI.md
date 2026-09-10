@@ -16,6 +16,22 @@ Destructive deletes require `--yes` (or `AI_COMPANY_OS_YES=1`).
 
 ---
 
+## Mixed LLM sources per agent
+
+Defaults stay as today (workspace `roles.agents` / company `provider`). Any agent can be pinned to a **different provider** from `ai-company-os.json`:
+
+```bash
+ai-company-os set-llm Chief -c acme -p claude -m sonnet
+ai-company-os set-llm Developer -c acme -p cursor -m auto
+ai-company-os set-llm Researcher -c acme -p openrouter -m google/gemma-4-31b-it:free
+ai-company-os show org -c acme --json   # see effective sources
+ai-company-os set-llm Researcher -c acme --clear   # inherit default again
+```
+
+Same company, one `tick`: each assignee uses their own source. Unset agents keep inheriting.
+
+---
+
 ## Command map
 
 ### Workspace & config
@@ -50,7 +66,9 @@ Workspace path for the CLI is **cwd** (unlike the UI’s persisted workspace pic
 | `companies` | Home company list |
 | `status` | Company masthead + org + queue summary |
 | `show state` | `GET /api/state` (+ approvals / checkins / connectors) |
-| `show meta` / `show org` | company.json + agent profiles |
+| `show meta` / `show org` | company.json + agents **with effective LLM sources** |
+| `agent <name>` | profile + effective LLM |
+| `set-llm <name> -p <provider> -m <model>` | pin agent to a source (`--clear` to inherit) |
 | `show task <id>` | task modal |
 | `show inbox <agent>` | agent INBOX / OUTBOX |
 | `show chat` / `show chat --planning` | chief chat / planning archive |

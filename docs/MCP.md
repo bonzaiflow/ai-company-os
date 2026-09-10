@@ -78,7 +78,22 @@ Full command map: [CLI.md](./CLI.md).
 | `connectors_get` | `connectors get` |
 | `skills_list` | `skills list` |
 | `config_get` | `config get` |
+| `config_set` | `config set --role … --model …` |
 | `plans_list` | `plans list` |
+| `show_org` | `show org` (effective LLM per agent) |
+| `agent_llm` | `agent <name>` |
+| `set_agent_llm` | `set-llm <name> -p … -m …` / `--clear` |
+
+### Mixed sources example
+
+Pin different providers on one company (defaults unchanged until you pin):
+
+```text
+set_agent_llm  name=Chief       provider=claude     model=sonnet
+set_agent_llm  name=Developer   provider=cursor     model=auto
+set_agent_llm  name=Researcher  provider=openrouter model=google/gemma-4-31b-it:free
+show_org       company=acme
+```
 
 Anything else (skills save, connectors set, plans launch, export, flush, …) goes through `run_cli`.
 
