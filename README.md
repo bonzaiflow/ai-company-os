@@ -78,17 +78,25 @@ Everything the model sees is kept deliberately small — profile + skills + task
 
 ## Commands
 
+Full MCP-oriented reference (every UI action ↔ CLI): **[docs/CLI.md](docs/CLI.md)**. Prefer `ai-company-os --json …` for automation.
+
 | command | what |
 |---|---|
 | `ai-company-os init` | scaffold workspace + provider config |
 | `ai-company-os plan [goal]` | chat-plan a company (`/launch`, `/save`, `/quit`); `--auto` for one shot |
+| `ai-company-os plans list\|show\|chat\|upload\|delete` | draft plans without the Plan UI |
 | `ai-company-os launch <plan.json>` | launch a saved plan |
 | `ai-company-os task <title>` | enqueue a new root task for the chief |
-| `ai-company-os tick` / `ai-company-os run` | process one task / run until idle (`-t` max ticks, `--steps`) |
-| `ai-company-os status` / `queue` / `log` | org chart · task list · audit tail |
+| `ai-company-os tick` / `run` | process one wave / run until idle |
+| `ai-company-os status` / `queue` / `log` / `show …` | org, tasks, audit, files, inbox, chat |
+| `ai-company-os chat <msg>` | message the chief (persists history) |
+| `ai-company-os db list\|table\|query\|export\|prompt` | read-only SQLite browser |
+| `ai-company-os connectors get\|set\|poll\|test` | email / Telegram / webhook |
+| `ai-company-os skills …` / `config …` / `upload` | skills, roles/models, data uploads |
+| `ai-company-os budget` / `pause` / `resume` / `flush` / `priority` | ops controls |
 | `ai-company-os agent <Name>` | an agent's profile + workspace files |
-| `ai-company-os ui` | web dashboard (default port 4646): organigram, tasks, audit; per-agent tabs (overview / tasks / files / audit); planning chat + launch; chat with the chief |
 | `ai-company-os companies` | list companies in the workspace |
+| `ai-company-os ui` | optional web dashboard (default port 4646) |
 
 ## Perpetuity, control, auditing, check-ins
 
