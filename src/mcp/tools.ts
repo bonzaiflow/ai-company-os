@@ -270,4 +270,84 @@ export function registerCuratedTools(server: McpServer): void {
     },
     async ({ cwd }) => cli(["plans", "list"], cwd)
   );
+
+  server.registerTool(
+    "show_org",
+    {
+      title: "Show org + LLM sources",
+      description:
+        "Organization chart with each agent's effective LLM provider/model (e.g. chief→claude, worker→openrouter).",
+      inputSchema: { company: companyOpt, cwd: z.string().optional() },
+    },
+    async ({ company, cwd }) => cli(withCompany(["show", "org"], company), cwd)
+  );
+
+  server.registerTool(
+    "agent_llm",
+    {
+      title: "Get agent LLM",
+      description: "Show an agent's effective LLM source and any profile override.",
+      inputSchema: {
+        name: z.string().describe("Agent name"),
+        company: companyOpt,
+        cwd: z.string().optional(),
+      },
+    },
+    async ({ name, company, cwd }) => cli(withCompany(["agent", name], company), cwd)
+  );
+
+  server.registerTool(
+    "set_agent_llm",
+    {
+      title: "Set agent LLM source",
+      description:
+        "Pin an agent to a provider/model (e.g. provider=claude model=sonnet), or clear to inherit company/workspace default. " +
+        "Use different sources per agent: chief=claude, developer=cursor, researcher=openrouter.",
+      inputSchema: {
+        name: z.string().describe("Agent name"),
+        provider: z
+          .string()
+          .optional()
+          .describe("Provider name from ai-company-os.json (claude, cursor, openrouter, …)"),
+        model: z.string().optional().describe("Model id/alias for that provider"),
+        clear: z.boolean().optional().describe("If true, remove override and inherit defaults"),
+        company: companyOpt,
+        cwd: z.string().optional(),
+      },
+    },
+    async ({ name, provider, model, clear, company, cwd }) => {
+      const argv = withCompany(["set-llm", name], company);
+      if (clear) argv.push("--clear");
+      else {
+        if (provider) argv.push("-p", provider);
+        if (model) argv.push("-m", model);
+      }
+      return cli(argv, cwd);
+    }
+  );
+
+  server.registerTool(
+    "config_set",
+    {
+      title: "Set workspace roles/models",
+      description: "Set workspace role→provider and/or role→model defaults (planning/agents/execution).",
+      inputSchema: {
+        roles: z
+          .array(z.string())
+          .optional()
+          .describe('role=provider pairs, e.g. ["planning=ollama-local","agents=cursor"]'),
+        models: z
+          .array(z.string())
+          .optional()
+          .describe('role=model pairs, e.g. ["agents=auto","planning=gemma4:12b"]'),
+        cwd: z.string().optional(),
+      },
+    },
+    async ({ roles, models, cwd }) => {
+      const argv = ["config", "set"];
+      for (const r of roles ?? []) argv.push("--role", r);
+      for (const m of models ?? []) argv.push("--model", m);
+      return cli(argv, cwd);
+    }
+  );
 }
