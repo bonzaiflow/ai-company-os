@@ -112,20 +112,17 @@ Inbound webhook HTTP (`POST /api/hooks/<slug>`) stays HTTP-only — use curl or 
 
 ## Suggested MCP tool wrapping
 
-Expose the binary as one tool (`run_ai_company_os`) with args `argv: string[]`, always prepend `--json`, and set `cwd` to the workspace. Example invocations:
+Prefer the built-in stdio server — see **[MCP.md](./MCP.md)** (`ai-company-os-mcp`).
+
+It exposes curated tools plus an escape-hatch `run_cli` that always injects `--json`:
 
 ```text
-["--json", "companies"]
-["--json", "show", "state", "-c", "acme"]
-["--json", "chat", "-c", "acme", "What is blocked?"]
-["--json", "approvals", "-c", "acme"]
-["--json", "approve", "-c", "acme", "APR-…"]
-["--json", "tick", "-c", "acme"]
-["--json", "db", "list", "-c", "acme"]
-["--json", "connectors", "get", "-c", "acme"]
+run_cli  argv=["companies"]
+run_cli  argv=["show","state","-c","acme"]
+run_cli  argv=["chat","-c","acme","What is blocked?"]
 ```
 
-Prefer `show state` for a single snapshot before acting.
+If you wrap the binary yourself, keep cwd (or `AI_COMPANY_OS_ROOT`) on the workspace and always pass `--json`.
 
 ---
 

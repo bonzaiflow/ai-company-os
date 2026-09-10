@@ -80,6 +80,8 @@ Everything the model sees is kept deliberately small — profile + skills + task
 
 Full MCP-oriented reference (every UI action ↔ CLI): **[docs/CLI.md](docs/CLI.md)**. Prefer `ai-company-os --json …` for automation.
 
+Stdio MCP server for Cursor / other hosts: **[docs/MCP.md](docs/MCP.md)** (`ai-company-os-mcp`).
+
 | command | what |
 |---|---|
 | `ai-company-os init` | scaffold workspace + provider config |
@@ -158,4 +160,5 @@ ai-company-os export <slug> -o ~/Desktop/acme-layout.zip
 ```bash
 npm run build     # tsc → dist/
 npm run smoke     # end-to-end run on a scripted mock provider, no model needed
+npm run mcp       # build + start MCP stdio server (see docs/MCP.md)
 ```
