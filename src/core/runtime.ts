@@ -1,4 +1,4 @@
-import type { AgentAction, AiCompanyOsConfig, LLMProvider, Task } from "../types.js";
+import type { AgentAction, AiCompanyOsConfig, LLMProvider } from "../types.js";
 import { resolveProvider } from "../llm/resolve.js";
 import { AsyncMutex, nowIso, truncate } from "../util.js";
 import { parseAction } from "./action-parse.js";
