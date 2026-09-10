@@ -126,12 +126,25 @@ export interface EmailConnectorConfig {
   routeTo?: string;
 }
 
+/** How inbound Telegram traffic is handled. */
+export type TelegramInboundMode = "bot" | "task";
+
 export interface TelegramConnectorConfig {
   botTokenEnv: string;
   /** empty = allow any chat (dev); set in production */
   allowedChatIds?: string[];
   /** agent name that receives inbound messages; defaults to chief */
   routeTo?: string;
+  /**
+   * `bot` (default): interactive menu + buttons; free text chats with the chief.
+   * `task`: legacy — each message becomes INBOX + a high-priority task.
+   */
+  mode?: TelegramInboundMode;
+  /**
+   * Optional env var holding a secret_token for Telegram setWebhook.
+   * Verified via header x-telegram-bot-api-secret-token on POST /api/hooks/telegram/:slug.
+   */
+  webhookSecretEnv?: string;
 }
 
 export interface WebhookConnectorConfig {

@@ -705,9 +705,10 @@ function connChannelStatus(kind, data) {
     if (!c.telegram || !c.telegram.botTokenEnv) return { pill: 'neutral', label: 'Off', meta: 'Not configured' };
     if (!s.telegram) return { pill: 'waiting', label: 'Needs secret', meta: c.telegram.botTokenEnv };
     var chats = (c.telegram.allowedChatIds || []).length;
+    var mode = c.telegram.mode || 'bot';
     return {
       pill: 'done',
-      label: 'Live',
+      label: mode === 'task' ? 'Task mode' : 'Bot + buttons',
       meta: chats ? chats + ' allowed chat' + (chats === 1 ? '' : 's') : 'Any chat (dev)'
     };
   }
@@ -779,7 +780,7 @@ function renderConnectorsHub(data) {
     {
       id: 'telegram',
       name: 'Telegram',
-      desc: 'Bot chat with the chief \\u2014 send and receive messages.',
+      desc: 'Interactive bot with buttons \\u2014 chat, run, pause, approvals.',
       accent: '#38bdf8'
     },
     {
@@ -968,12 +969,47 @@ function openConnectorEditor(kind, data) {
           placeholder: '123456789',
           hint: 'Comma-separated. Empty allows any chat (fine for local testing).'
         });
-        fields.tgRoute = connField('Route inbound to', tg.routeTo || '', {
-          options: connAgentOptions(agents),
-          hint: 'Typically the chief'
+        fields.tgMode = connField('Inbound mode', tg.mode || 'bot', {
+          options: [
+            { value: 'bot', label: 'Bot — buttons + chief chat (recommended)' },
+            { value: 'task', label: 'Task — INBOX + high-priority task only' }
+          ],
+          hint: 'Bot mode: free text chats with the chief; buttons for status/run/pause/approvals'
         });
-        [fields.tgToken, fields.tgChats, fields.tgRoute].forEach(function (f) { tgFields.appendChild(f); });
+        fields.tgRoute = connField('Route /task inbound to', tg.routeTo || '', {
+          options: connAgentOptions(agents),
+          hint: 'Used for /task and task mode'
+        });
+        fields.tgWhSecret = connField('Webhook secret env (optional)', tg.webhookSecretEnv || '', {
+          placeholder: 'TELEGRAM_WEBHOOK_SECRET',
+          hint: secrets.telegramWebhook
+            ? 'Env is set — used as Telegram secret_token'
+            : 'Optional. Required for public HTTPS webhook verification'
+        });
+        [fields.tgToken, fields.tgChats, fields.tgMode, fields.tgRoute, fields.tgWhSecret].forEach(function (f) {
+          tgFields.appendChild(f);
+        });
         tgBlock.appendChild(tgFields);
+
+        var tgHookUrl = location.origin + (data.telegramHookPath || ('/api/hooks/telegram/' + companySlug));
+        var hookRow = el('div', 'conn-hook');
+        var hookCode = el('code', null, tgHookUrl);
+        hookRow.appendChild(hookCode);
+        var copyBtn = el('button', 'btn', 'Copy webhook URL');
+        copyBtn.type = 'button';
+        copyBtn.onclick = function () {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(tgHookUrl).then(function () { showToast('Copied', 'ok'); });
+          } else {
+            showToast(tgHookUrl, 'ok');
+          }
+        };
+        hookRow.appendChild(copyBtn);
+        tgBlock.appendChild(hookRow);
+        tgBlock.appendChild(el('div', 'hint',
+          'Local: run ai-company-os telegram listen -c ' + companySlug + '. ' +
+          'Public HTTPS: set webhook to the URL above (UI button or CLI).'
+        ));
         editor.appendChild(tgBlock);
       }
 
@@ -1069,10 +1105,14 @@ function openConnectorEditor(kind, data) {
         var token = fields.tgToken._input.value.trim();
         if (!token) return null;
         var chats = fields.tgChats._input.value.split(/[,\\s]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+        var mode = (fields.tgMode && fields.tgMode._input.value.trim()) || 'bot';
+        var whSecret = fields.tgWhSecret ? fields.tgWhSecret._input.value.trim() : '';
         return {
           botTokenEnv: token,
           allowedChatIds: chats.length ? chats : undefined,
-          routeTo: fields.tgRoute._input.value.trim() || undefined
+          routeTo: fields.tgRoute._input.value.trim() || undefined,
+          mode: mode === 'task' ? 'task' : 'bot',
+          webhookSecretEnv: whSecret || undefined
         };
       }
 
@@ -1150,12 +1190,51 @@ function openConnectorEditor(kind, data) {
         actions.appendChild(testEmail);
       }
       if (kind === 'telegram') {
-        var testTg = el('button', 'btn', 'Send test');
+        var testTg = el('button', 'btn', 'Send menu');
         testTg.onclick = function () {
           var chatId = (fields.tgChats._input.value.split(/[,\\s]+/).filter(Boolean)[0]) || '';
-          testConnector('telegram', { chatId: chatId }, statusEl);
+          testConnector('telegram', { chatId: chatId, menu: true }, statusEl);
         };
         actions.appendChild(testTg);
+
+        var setWh = el('button', 'btn', 'Set webhook');
+        setWh.onclick = function () {
+          var hookUrl = location.origin + (data.telegramHookPath || ('/api/hooks/telegram/' + companySlug));
+          statusEl.textContent = 'Setting webhook\\u2026';
+          setWh.disabled = true;
+          fetch('/api/connectors/telegram/webhook', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ company: companySlug, action: 'set', url: hookUrl })
+          })
+            .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.statusText); return j; }); })
+            .then(function (j) {
+              statusEl.textContent = j.detail || 'Webhook set';
+              showToast('Telegram webhook set', 'ok');
+            })
+            .catch(function (e) { statusEl.textContent = e.message || String(e); })
+            .finally(function () { setWh.disabled = false; });
+        };
+        actions.appendChild(setWh);
+
+        var delWh = el('button', 'btn', 'Clear webhook');
+        delWh.onclick = function () {
+          statusEl.textContent = 'Clearing webhook\\u2026';
+          delWh.disabled = true;
+          fetch('/api/connectors/telegram/webhook', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ company: companySlug, action: 'delete' })
+          })
+            .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.statusText); return j; }); })
+            .then(function (j) {
+              statusEl.textContent = j.detail || 'Webhook cleared';
+              showToast('Telegram webhook cleared', 'ok');
+            })
+            .catch(function (e) { statusEl.textContent = e.message || String(e); })
+            .finally(function () { delWh.disabled = false; });
+        };
+        actions.appendChild(delWh);
       }
 
       body.appendChild(actions);

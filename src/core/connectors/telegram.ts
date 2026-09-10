@@ -1,111 +1,159 @@
 import type { TelegramConnectorConfig } from "../../types.js";
-import { truncate } from "../../util.js";
 import type { Company } from "../store.js";
-import { ingestInbound } from "./ingest.js";
-import { envSecret, loadState, saveState } from "./state.js";
-import type { InboundEvent } from "./types.js";
+import { handleTelegramUpdate } from "./telegram-bot.js";
+import {
+  assertAllowedChat,
+  tgDeleteWebhook,
+  tgGetUpdates,
+  tgGetWebhookInfo,
+  tgSendMessage,
+  tgSetWebhook,
+  telegramToken,
+  type InlineKeyboard,
+  type TgUpdate,
+} from "./telegram-api.js";
+import { loadState, saveState } from "./state.js";
 
-function apiBase(token: string): string {
-  return `https://api.telegram.org/bot${token}`;
-}
-
-interface TgUpdate {
-  update_id: number;
-  message?: {
-    message_id: number;
-    text?: string;
-    caption?: string;
-    chat: { id: number; type: string; title?: string; username?: string; first_name?: string };
-    from?: { id: number; username?: string; first_name?: string };
-  };
-}
-
-async function tgCall<T>(token: string, method: string, body?: Record<string, unknown>): Promise<T> {
-  const res = await fetch(`${apiBase(token)}/${method}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body ?? {}),
-    signal: AbortSignal.timeout(25_000),
-  });
-  const data = (await res.json()) as { ok: boolean; description?: string; result: T };
-  if (!data.ok) throw new Error(`telegram ${method}: ${data.description ?? res.status}`);
-  return data.result;
-}
+export {
+  sendTelegramMenu,
+  handleTelegramUpdate,
+  mainMenuKeyboard,
+} from "./telegram-bot.js";
+export type { TgUpdate } from "./telegram-api.js";
 
 export async function sendTelegram(
   cfg: TelegramConnectorConfig,
-  opts: { chatId: string; text: string }
+  opts: { chatId: string; text: string; replyMarkup?: InlineKeyboard }
 ): Promise<string> {
-  const token = envSecret(cfg.botTokenEnv, "telegram");
+  const token = telegramToken(cfg);
   const chatId = String(opts.chatId ?? "").trim();
   if (!chatId) throw new Error("telegram: chatId is required");
   const text = String(opts.text ?? "").trim();
   if (!text) throw new Error("telegram: text is required");
+  assertAllowedChat(cfg, chatId);
 
-  const allowed = cfg.allowedChatIds?.map(String).filter(Boolean) ?? [];
-  if (allowed.length && !allowed.includes(chatId)) {
-    throw new Error(`telegram: chatId ${chatId} not in allowedChatIds`);
-  }
-
-  const result = await tgCall<{ message_id: number }>(token, "sendMessage", {
-    chat_id: chatId,
-    text: text.slice(0, 4096),
+  const result = await tgSendMessage(token, {
+    chatId,
+    text,
+    replyMarkup: opts.replyMarkup,
   });
   return `sent telegram to ${chatId} (message_id=${result.message_id})`;
 }
 
-/** Short getUpdates poll (timeout 0) — safe to call from daemon wake. */
-export async function pollTelegram(co: Company, cfg: TelegramConnectorConfig): Promise<number> {
-  const token = envSecret(cfg.botTokenEnv, "telegram");
+/**
+ * Poll getUpdates (short or long). Processes each update through the bot
+ * handler (interactive buttons / chief chat) or legacy task ingest.
+ */
+export async function pollTelegram(
+  co: Company,
+  cfg: TelegramConnectorConfig,
+  opts?: { timeout?: number; configRoot?: string }
+): Promise<number> {
+  const token = telegramToken(cfg);
   const state = loadState(co);
   const offset = (state.telegram?.lastUpdateId ?? 0) + 1;
-  const updates = await tgCall<TgUpdate[]>(token, "getUpdates", {
+  const updates = await tgGetUpdates(token, {
     offset,
-    timeout: 0,
-    allowed_updates: ["message"],
+    timeout: opts?.timeout ?? 0,
   });
 
-  const allowed = new Set((cfg.allowedChatIds ?? []).map(String).filter(Boolean));
-  let ingested = 0;
+  let handled = 0;
   let maxId = state.telegram?.lastUpdateId ?? 0;
 
   for (const u of updates) {
     if (u.update_id > maxId) maxId = u.update_id;
-    const msg = u.message;
-    if (!msg) continue;
-    const chatId = String(msg.chat.id);
-    if (allowed.size && !allowed.has(chatId)) continue;
-    const text = (msg.text || msg.caption || "").trim();
-    if (!text) continue;
-    const who =
-      msg.from?.username ||
-      msg.from?.first_name ||
-      msg.chat.username ||
-      msg.chat.title ||
-      chatId;
-    const event: InboundEvent = {
-      channel: "telegram",
-      from: `telegram:${chatId}`,
-      subject: `tg from ${who}`,
-      body: truncate(
-        [
-          `Chat id: ${chatId}`,
-          `From: ${who}`,
-          `Message id: ${msg.message_id}`,
-          "",
-          text,
-        ].join("\n"),
-        4000
-      ),
-      externalId: `update-${u.update_id}`,
-      createTask: true,
-    };
-    ingestInbound(co, event, cfg.routeTo);
-    ingested++;
+    try {
+      const ok = await handleTelegramUpdate(co, cfg, u, {
+        workspaceRoot: opts?.configRoot,
+      });
+      if (ok) handled++;
+    } catch (e) {
+      // Advance cursor anyway so a bad update doesn't brick the poll loop
+      co.audit({
+        type: "connector.telegram.error",
+        ok: false,
+        detail: `update ${u.update_id}: ${(e as Error).message}`.slice(0, 300),
+      });
+    }
   }
 
   const next = loadState(co);
   next.telegram = { lastUpdateId: maxId };
   saveState(co, next);
-  return ingested;
+  return handled;
+}
+
+/** Long-poll loop for CLI `telegram listen`. */
+export async function listenTelegram(
+  co: Company,
+  cfg: TelegramConnectorConfig,
+  opts: {
+    log?: (line: string) => void;
+    shouldStop?: () => boolean;
+    configRoot?: string;
+  } = {}
+): Promise<void> {
+  const log = opts.log ?? (() => {});
+  log("telegram listen started (long-poll). Ctrl-C to stop.");
+  // Clear webhook so getUpdates works
+  try {
+    const token = telegramToken(cfg);
+    const info = await tgGetWebhookInfo(token);
+    if (info.url) {
+      await tgDeleteWebhook(token);
+      log(`cleared webhook ${info.url} so polling can run`);
+    }
+  } catch (e) {
+    log(`webhook check: ${(e as Error).message}`);
+  }
+
+  while (!opts.shouldStop?.()) {
+    try {
+      const n = await pollTelegram(co, cfg, { timeout: 25, configRoot: opts.configRoot });
+      if (n) log(`handled ${n} update(s)`);
+    } catch (e) {
+      log(`poll error: ${(e as Error).message}`);
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+}
+
+export async function setTelegramWebhook(
+  cfg: TelegramConnectorConfig,
+  url: string,
+  secret?: string
+): Promise<string> {
+  const token = telegramToken(cfg);
+  await tgSetWebhook(token, { url, secretToken: secret });
+  return `webhook set → ${url}`;
+}
+
+export async function deleteTelegramWebhook(cfg: TelegramConnectorConfig): Promise<string> {
+  const token = telegramToken(cfg);
+  await tgDeleteWebhook(token);
+  return "webhook deleted";
+}
+
+export async function telegramWebhookInfo(cfg: TelegramConnectorConfig): Promise<{
+  url: string;
+  pending_update_count: number;
+  last_error_message?: string;
+}> {
+  return tgGetWebhookInfo(telegramToken(cfg));
+}
+
+/** Handle a raw Update from Telegram's webhook POST. */
+export async function handleTelegramWebhookUpdate(
+  co: Company,
+  cfg: TelegramConnectorConfig,
+  update: TgUpdate,
+  opts?: { workspaceRoot?: string }
+): Promise<void> {
+  await handleTelegramUpdate(co, cfg, update, opts);
+  const state = loadState(co);
+  const id = update.update_id ?? 0;
+  if (id > (state.telegram?.lastUpdateId ?? 0)) {
+    state.telegram = { lastUpdateId: id };
+    saveState(co, state);
+  }
 }

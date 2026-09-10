@@ -74,7 +74,7 @@ export const telegramTool: Tool = {
   doc:
     'telegram — send or read Telegram via the company bot connector (typically for the chief). ' +
     'args: {"op":"send","chatId":"123456","text":"..."} or {"op":"read","limit":5}. ' +
-    "Requires connectors.telegram.botTokenEnv. Optionally restrict with allowedChatIds.",
+    "Requires connectors.telegram.botTokenEnv. Owners also use the interactive bot (buttons) via telegram listen / webhook.",
   async run(ctx, args) {
     const cfg = ctx.company.meta.connectors?.telegram;
     if (!cfg?.botTokenEnv) {

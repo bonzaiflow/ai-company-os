@@ -1,17 +1,24 @@
 import {
+  deleteTelegramWebhook,
+  envSecret,
+  handleTelegramWebhookUpdate,
   handleWebhook,
   pollConnectors,
   publicState as connectorPublicState,
   sendEmail,
   sendTelegram,
+  sendTelegramMenu,
+  setTelegramWebhook,
+  telegramWebhookInfo,
   postWebhook,
+  type TgUpdate,
 } from "../../core/connectors/index.js";
 import { Company } from "../../core/store.js";
 import type { ConnectorsConfig } from "../../types.js";
 import { json, readBody } from "../http.js";
 import type { RouteHandler } from "./types.js";
 
-/** /api/connectors* and /api/hooks/:slug — external connectors. */
+/** /api/connectors* and /api/hooks/* — external connectors + Telegram bot webhook. */
 export const handleConnectorsRoutes: RouteHandler = async ({ root, req, res, url }) => {
   if (req.method === "GET" && url.pathname === "/api/connectors") {
     const co = Company.open(root, url.searchParams.get("company") ?? "");
@@ -24,9 +31,11 @@ export const handleConnectorsRoutes: RouteHandler = async ({ root, req, res, url
         emailSmtp: envSet(connectors.email?.smtp?.passEnv),
         emailImap: envSet(connectors.email?.imap?.passEnv),
         telegram: envSet(connectors.telegram?.botTokenEnv),
+        telegramWebhook: envSet(connectors.telegram?.webhookSecretEnv),
         webhook: envSet(connectors.webhook?.inboundSecretEnv),
       },
       hookPath: `/api/hooks/${co.meta.slug}`,
+      telegramHookPath: `/api/hooks/telegram/${co.meta.slug}`,
       agents: co.listAgents().map((a) => a.name),
       approveTools: co.meta.policies?.approveTools ?? [],
     });
@@ -95,10 +104,21 @@ export const handleConnectorsRoutes: RouteHandler = async ({ root, req, res, url
         if (!cfg?.telegram) throw new Error("telegram connector not configured");
         const chatId = String(body.chatId || cfg.telegram.allowedChatIds?.[0] || "");
         if (!chatId) throw new Error("chatId required (or set allowedChatIds[0])");
-        const msg = await sendTelegram(cfg.telegram, {
-          chatId,
-          text: `Test from ai-company-os company ${co.meta.slug}`,
-        });
+        const withMenu = body.menu !== false && body.menu !== "false";
+        const msg = withMenu
+          ? await sendTelegramMenu(co, cfg.telegram, chatId)
+          : await sendTelegram(cfg.telegram, {
+              chatId,
+              text: `Test from ai-company-os company ${co.meta.slug}`,
+            });
+        json(res, { ok: true, detail: msg });
+        return true;
+      }
+      if (kind === "telegram-menu") {
+        if (!cfg?.telegram) throw new Error("telegram connector not configured");
+        const chatId = String(body.chatId || cfg.telegram.allowedChatIds?.[0] || "");
+        if (!chatId) throw new Error("chatId required (or set allowedChatIds[0])");
+        const msg = await sendTelegramMenu(co, cfg.telegram, chatId);
         json(res, { ok: true, detail: msg });
         return true;
       }
@@ -112,17 +132,83 @@ export const handleConnectorsRoutes: RouteHandler = async ({ root, req, res, url
         json(res, { ok: true, detail: msg });
         return true;
       }
-      json(res, { error: "kind must be email|telegram|webhook" }, 400);
+      json(res, { error: "kind must be email|telegram|telegram-menu|webhook" }, 400);
     } catch (e) {
       json(res, { error: (e as Error).message }, 400);
     }
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/connectors/telegram/webhook") {
+    const body = await readBody(req);
+    const co = Company.open(root, String(body.company ?? ""));
+    const tg = co.meta.connectors?.telegram;
+    if (!tg?.botTokenEnv) {
+      json(res, { error: "telegram connector not configured" }, 400);
+      return true;
+    }
+    const action = String(body.action ?? "info");
+    try {
+      if (action === "set") {
+        const hookUrl = String(body.url || "").trim();
+        if (!hookUrl) throw new Error("url required");
+        let secret: string | undefined;
+        if (tg.webhookSecretEnv) secret = envSecret(tg.webhookSecretEnv, "telegram webhook");
+        const detail = await setTelegramWebhook(tg, hookUrl, secret);
+        json(res, { ok: true, detail, url: hookUrl });
+        return true;
+      }
+      if (action === "delete") {
+        const detail = await deleteTelegramWebhook(tg);
+        json(res, { ok: true, detail });
+        return true;
+      }
+      const info = await telegramWebhookInfo(tg);
+      json(res, { ok: true, ...info });
+      return true;
+    } catch (e) {
+      json(res, { error: (e as Error).message }, 400);
+      return true;
+    }
+  }
+
+  {
+    const tgHook = /^\/api\/hooks\/telegram\/([^/]+)$/.exec(url.pathname);
+    if (req.method === "POST" && tgHook) {
+      const slug = decodeURIComponent(tgHook[1]);
+      const co = Company.open(root, slug);
+      const tg = co.meta.connectors?.telegram;
+      if (!tg?.botTokenEnv) {
+        json(res, { error: "telegram connector not configured for this company" }, 404);
+        return true;
+      }
+      if (tg.webhookSecretEnv) {
+        const expected = envSecret(tg.webhookSecretEnv, "telegram webhook");
+        const got = String(req.headers["x-telegram-bot-api-secret-token"] ?? "");
+        if (got !== expected) {
+          json(res, { error: "invalid telegram webhook secret" }, 401);
+          return true;
+        }
+      }
+      const body = (await readBody(req)) as TgUpdate;
+      try {
+        await handleTelegramWebhookUpdate(co, tg, body, { workspaceRoot: root });
+        // Telegram expects 200 quickly
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end("{}");
+      } catch (e) {
+        json(res, { error: (e as Error).message }, 500);
+      }
+      return true;
+    }
+  }
+
   {
     const hookMatch = /^\/api\/hooks\/([^/]+)$/.exec(url.pathname);
     if (req.method === "POST" && hookMatch) {
       const slug = decodeURIComponent(hookMatch[1]);
+      // Don't steal /api/hooks/telegram/...
+      if (slug === "telegram") return false;
       const co = Company.open(root, slug);
       const wh = co.meta.connectors?.webhook;
       if (!wh?.inboundSecretEnv) {

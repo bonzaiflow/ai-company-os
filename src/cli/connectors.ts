@@ -4,7 +4,7 @@ import {
   pollConnectors,
   publicState,
   sendEmail,
-  sendTelegram,
+  sendTelegramMenu,
   postWebhook,
 } from "../core/connectors/index.js";
 import { c, readJson } from "../util.js";
@@ -48,9 +48,11 @@ export function registerConnectorCommands(program: Command, ctx: CliCtx): void {
                 emailSmtp: envSet(connectors.email?.smtp?.passEnv),
                 emailImap: envSet(connectors.email?.imap?.passEnv),
                 telegram: envSet(connectors.telegram?.botTokenEnv),
+                telegramWebhook: envSet(connectors.telegram?.webhookSecretEnv),
                 webhook: envSet(connectors.webhook?.inboundSecretEnv),
               },
               hookPath: `/api/hooks/${co.meta.slug}`,
+              telegramHookPath: `/api/hooks/telegram/${co.meta.slug}`,
               approveTools: co.meta.policies?.approveTools ?? [],
             },
             () => {
@@ -139,10 +141,7 @@ export function registerConnectorCommands(program: Command, ctx: CliCtx): void {
               if (!cfg?.telegram) fail("telegram connector not configured");
               const chatId = String(opts.chatId || cfg.telegram.allowedChatIds?.[0] || "");
               if (!chatId) fail("chatId required (--chat-id or allowedChatIds[0])");
-              detail = await sendTelegram(cfg.telegram, {
-                chatId,
-                text: `Test from ai-company-os company ${co.meta.slug}`,
-              });
+              detail = await sendTelegramMenu(co, cfg.telegram, chatId);
             } else if (kind === "webhook") {
               const urlOut = String(opts.url || "");
               if (!urlOut) fail("--url required for webhook test");

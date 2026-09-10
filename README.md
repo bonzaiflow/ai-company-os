@@ -94,6 +94,7 @@ Stdio MCP server for Cursor / other hosts: **[docs/MCP.md](docs/MCP.md)** (`ai-c
 | `ai-company-os chat <msg>` | message the chief (persists history) |
 | `ai-company-os db list\|table\|query\|export\|prompt` | read-only SQLite browser |
 | `ai-company-os connectors get\|set\|poll\|test` | email / Telegram / webhook |
+| `ai-company-os telegram listen\|menu\|webhook` | interactive Telegram bot (buttons) |
 | `ai-company-os skills …` / `config …` / `upload` | skills, roles/models, data uploads |
 | `ai-company-os budget` / `pause` / `resume` / `flush` / `priority` | ops controls |
 | `ai-company-os agent <Name>` | an agent's profile + workspace files |
@@ -120,14 +121,16 @@ Companies can talk to the outside world through **connectors** configured per co
 | Connector | Outbound tool | Inbound |
 |---|---|---|
 | **Email** | `email` (`op: send`) via SMTP | IMAP poll → agent INBOX + task |
-| **Telegram** | `telegram` (`op: send`) | Bot `getUpdates` poll → usually **chief** |
+| **Telegram** | `telegram` (`op: send`) | **Bot mode** (default): inline buttons + chief chat; or `mode: "task"` → INBOX + task |
 | **Webhook** | `webhook` (`op: post`) | `POST /api/hooks/<slug>` with `x-connector-secret` |
 
-Inbound events become INBOX markdown (with `channel` / `externalId` frontmatter) and a high-priority task for `routeTo` (default: chief). The daemon polls email/Telegram on each wake; you can also **Poll now** from the UI.
+Inbound email/webhook (and Telegram **task** mode) become INBOX markdown and a high-priority task for `routeTo` (default: chief). The daemon still polls on each wake; you can also **Poll now** from the UI.
+
+**Telegram bot (recommended):** configure Connectors → Telegram, then either `ai-company-os telegram listen -c <slug>` (local long-poll) or **Set webhook** on a public HTTPS UI to `/api/hooks/telegram/<slug>`. Open the bot → `/start` for Status / Queue / Run / Pause / Approvals buttons; free text chats with the chief (same history as the dashboard).
 
 Outbound sends are network tools — assign them on agent profiles (planner allow-list includes `email`, `telegram`, `webhook`). Prefer gating them with `policies.approveTools: ["email","telegram","webhook"]` so the owner approves each send.
 
-Telegram tip: create a bot with BotFather, set `TELEGRAM_BOT_TOKEN`, put your chat id in `allowedChatIds`, give the chief the `telegram` tool, and message the bot — the next daemon wake (or Poll now) delivers it.
+Telegram tip: create a bot with BotFather, set `TELEGRAM_BOT_TOKEN`, put your chat id in `allowedChatIds`, then `telegram menu` or message `/start`.
 
 Webhook tip: `curl -X POST http://localhost:4646/api/hooks/<slug> -H 'content-type: application/json' -H "x-connector-secret: $WEBHOOK_SECRET" -d '{"text":"hello","from":"zapier"}'`
 

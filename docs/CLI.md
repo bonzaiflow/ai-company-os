@@ -115,9 +115,16 @@ Workspace path for the CLI is **cwd** (unlike the UI’s persisted workspace pic
 | CLI | UI / API |
 |---|---|
 | `connectors get` / `connectors set <json\|file>` | Connectors hub |
-| `connectors poll` / `connectors test <kind>` | Poll now / test send |
+| `connectors poll` / `connectors test <kind>` | Poll now / test send (Telegram test sends the button menu) |
+| `telegram listen` | long-poll interactive bot for one company |
+| `telegram menu` | send Status/Queue/Run/… control pad |
+| `telegram webhook set\|delete\|info` | Telegram `setWebhook` against the UI |
 
 Inbound webhook HTTP (`POST /api/hooks/<slug>`) stays HTTP-only — use curl or any HTTP client from MCP if needed.
+
+Telegram bot webhook: `POST /api/hooks/telegram/<slug>` (optional header `x-telegram-bot-api-secret-token`).
+
+**Telegram bot mode (default):** free-text chats with the chief (shared `chat.json`); inline buttons for status, queue, run, pause/resume, and approvals. Use `mode: "task"` for legacy INBOX+task ingest only.
 
 ### Skills
 
@@ -158,6 +165,7 @@ If you wrap the binary yourself, keep cwd (or `AI_COMPANY_OS_ROOT`) on the works
 | `/api/company/pause` | `pause` / `resume` |
 | `/api/company/schedule` | `schedule` |
 | `/api/connectors*` | `connectors *` |
+| `/api/hooks/telegram/:slug` | `telegram webhook` / Telegram Bot API |
 | `/api/approvals*` | `approvals` / `approve` / `deny` |
 | `/api/checkin(s)` | `checkin` / `checkins` |
 | `/api/audit/*` | `audit` / `audit export` |

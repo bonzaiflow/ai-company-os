@@ -8,7 +8,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
-import { ingestInbound } from "./core/connectors/index.js";
+import { ingestInbound, mainMenuKeyboard } from "./core/connectors/index.js";
 import { runLoop } from "./core/runtime.js";
 import { scaffoldCompany } from "./core/store.js";
 import { resolveToolName, toolsFor } from "./core/tools.js";
@@ -93,6 +93,12 @@ assert.ok(co.spent().tokens > 0 && co.spent().toolCalls === 4, "budget counters 
 assert.equal(resolveToolName("tg"), "telegram");
 assert.equal(resolveToolName("mail"), "email");
 assert.ok(toolsFor(["telegram"]).some((t) => t.name === "telegram"), "telegram tool registered");
+const pad = mainMenuKeyboard(false);
+assert.ok(pad.inline_keyboard.length >= 3, "telegram menu has button rows");
+assert.ok(
+  pad.inline_keyboard.flat().some((b) => b.callback_data === "t:s"),
+  "telegram menu includes Status callback"
+);
 const beforeQ = co.queue().length;
 const ing = ingestInbound(co, {
   channel: "webhook",
