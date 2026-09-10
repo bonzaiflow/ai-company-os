@@ -961,9 +961,11 @@ function openConnectorEditor(kind, data) {
         var tgBlock = el('div', 'conn-block');
         tgBlock.appendChild(el('div', 'conn-block-title', 'Bot'));
         var tgFields = el('div', 'conn-fields');
-        fields.tgToken = connField('Bot token env var', tg.botTokenEnv || '', {
+        fields.tgToken = connField('Bot token env var name', tg.botTokenEnv || '', {
           placeholder: 'TELEGRAM_BOT_TOKEN',
-          hint: secrets.telegram ? 'Env is set on this machine' : 'Create a bot with BotFather, then export the token'
+          hint: secrets.telegram
+            ? 'Env is set on this machine'
+            : 'Type exactly TELEGRAM_BOT_TOKEN here (the name). Put the real token in .env / export — not in this box.'
         });
         fields.tgChats = connField('Allowed chat ids', (tg.allowedChatIds || []).join(', '), {
           placeholder: '123456789',

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
-import { initWorkspace, loadConfig, resolveUiWorkspaceRoot, setPersistedWorkspaceRoot } from "../config.js";
+import { initWorkspace, loadConfig, loadDotEnv, resolveUiWorkspaceRoot, setPersistedWorkspaceRoot } from "../config.js";
 import { effectiveAgentLlm, resolveProvider } from "../llm/resolve.js";
 import { exportCompanyZip, type CompanyExportMode } from "../core/export.js";
 import { listApprovals } from "../core/governance.js";
@@ -37,6 +37,7 @@ import { registerAgentLlmCommands } from "./agent-llm.js";
 import { companyState, listAgentFiles } from "./inspect.js";
 
 const ROOT = process.cwd();
+loadDotEnv(ROOT);
 const BUNDLED_SKILLS = path.resolve(fileURLToPath(import.meta.url), "../../../skills");
 const DEFAULT_RETRY_HEADROOM = 2;
 const CTX: CliCtx = { root: ROOT, bundledSkills: BUNDLED_SKILLS, json: false };
@@ -559,6 +560,7 @@ program
   .option("--cwd", "use the current directory even if a last workspace is saved")
   .action((opts) => {
     const root = opts.cwd ? ROOT : resolveUiWorkspaceRoot(ROOT);
+    loadDotEnv(ROOT, root);
     setPersistedWorkspaceRoot(root);
     serveUi(root, Number(opts.port), BUNDLED_SKILLS, { dev: !!opts.dev, daemon: !!opts.daemon });
   });
