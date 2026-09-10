@@ -155,6 +155,16 @@ ai-company-os export <slug> -o ~/Desktop/acme-layout.zip
 - **agents** — default for agent steps and the chief chat (an agent's own `provider:` in profile.md wins; the company default is the last fallback)
 - **execution** — the mechanical-JSON model used to repair malformed actions
 
+**Mixed sources in one company:** leave most agents on the default, and pin individuals to different providers (UI agent overview, or CLI):
+
+```bash
+ai-company-os set-llm Chief -p claude -m sonnet
+ai-company-os set-llm Developer -p cursor -m auto
+ai-company-os set-llm Researcher -p openrouter -m google/gemma-4-31b-it:free
+```
+
+See [docs/CLI.md](docs/CLI.md) and [docs/MCP.md](docs/MCP.md).
+
 ## Development
 
 ```bash
