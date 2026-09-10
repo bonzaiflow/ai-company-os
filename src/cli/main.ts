@@ -457,7 +457,7 @@ program
   .command("doctor")
   .description("self-test all tools and provider reachability")
   .action(async () => {
-    const { runDoctor, formatDoctor } = await import("./core/doctor.js");
+    const { runDoctor, formatDoctor } = await import("../core/doctor.js");
     const checks = await runDoctor(loadConfig(ROOT));
     console.log(formatDoctor(checks));
     const fails = checks.filter((c) => c.level === "fail");
