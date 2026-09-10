@@ -81,7 +81,7 @@ export async function wakeCompany(
   const ci = meta.checkins;
   if (ci && due(ci.lastAt, ci.everyHours * 3_600_000)) {
     try {
-      const c = await runCheckin(co, cfg);
+      await runCheckin(co, cfg);
       log(`✉ check-in for ${slug}: stats snapshot`);
     } catch (e) {
       log(`✗ check-in failed for ${slug}: ${(e as Error).message}`);

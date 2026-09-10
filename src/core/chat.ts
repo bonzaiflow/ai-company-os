@@ -7,7 +7,7 @@ import { extractJson, extractPartialJsonField, nowIso, truncate } from "../util.
 import type { Company } from "./store.js";
 import { chiefChatSystem, resolveLookup } from "./chat-state.js";
 
-const CHAT_SCHEMA = {
+export const CHAT_SCHEMA = {
   type: "object",
   properties: {
     reply: { type: "string" },

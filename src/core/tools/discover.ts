@@ -357,11 +357,9 @@ export const discoverTool: Tool = {
       if (stopPoll) clearInterval(stopPoll);
     }
     // drop category-excluded names (e.g. public job centres for recruitment)
-    let excluded = 0;
     if (category?.exclude) {
       const re = category.exclude;
       const kept = rows.filter((r) => !re.test(r.name));
-      excluded = rows.length - kept.length;
       rows.length = 0;
       rows.push(...kept);
     }

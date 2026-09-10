@@ -13,7 +13,6 @@ import type { Company } from "./store.js";
 import {
   failTask,
   MAX_STUCK_TICKS,
-  retryOrFail,
   taskDepth,
 } from "./task-lifecycle.js";
 import type { TickOptions, TickResult } from "./tick-types.js";

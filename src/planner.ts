@@ -1,8 +1,7 @@
 import path from "node:path";
 import readline from "node:readline/promises";
 import type { ChatMessage, LLMProvider, Plan, Rank } from "./types.js";
-import { allToolNames } from "./core/tools.js";
-import { c, extractJson, slugify, truncate, writeJson } from "./util.js";
+import { c, extractJson, slugify, writeJson } from "./util.js";
 
 export const PLAN_SCHEMA = {
   type: "object",

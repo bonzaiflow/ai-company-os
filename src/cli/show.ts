@@ -12,7 +12,6 @@ import {
   fail,
   openCompany,
   out,
-  wantJson,
   withJson,
   type CliCtx,
 } from "./helpers.js";
