@@ -3,6 +3,7 @@ import path from "node:path";
 import type { AuditEvent } from "../types.js";
 import { parseFrontmatter } from "../util.js";
 import { listAgentFiles } from "../core/agent-files.js";
+import { taskAudit as taskAuditCore } from "../core/audit-read.js";
 import type { Company } from "../core/store.js";
 
 export { listAgentFiles } from "../core/agent-files.js";
@@ -32,19 +33,7 @@ export function listInbox(
 }
 
 export function taskAudit(co: Company, id: string): AuditEvent[] {
-  const file = path.join(co.dir, "audit.jsonl");
-  if (!fs.existsSync(file)) return [];
-  const out: AuditEvent[] = [];
-  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      const e = JSON.parse(line) as AuditEvent & { taskId?: string };
-      if (e.taskId === id) out.push(e);
-    } catch {
-      /* skip */
-    }
-  }
-  return out;
+  return taskAuditCore(co, id, 0);
 }
 
 export function taskDetail(co: Company, id: string) {

@@ -1,22 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import { taskAudit } from "../core/audit-read.js";
 import type { Company } from "../core/store.js";
-import type { AuditEvent, Task } from "../types.js";
+import type { Task } from "../types.js";
 import { parseFrontmatter } from "../util.js";
-
-function taskAudit(co: Company, id: string): AuditEvent[] {
-  const file = path.join(co.dir, "audit.jsonl");
-  if (!fs.existsSync(file)) return [];
-  const out: AuditEvent[] = [];
-  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      const e = JSON.parse(line) as AuditEvent;
-      if (e.taskId === id) out.push(e);
-    } catch {}
-  }
-  return out.slice(-200);
-}
 
 function taskMessages(co: Company, id: string) {
   const out: {
