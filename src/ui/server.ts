@@ -62,6 +62,7 @@ import { effectiveAgentLlm, resolveHelperLlm, resolveProvider } from "../llm/res
 import { normalizePlan, planTurn, plannerSystem } from "../planner.js";
 import type { AuditEvent, ChatMessage, ConnectorsConfig, Plan, Task } from "../types.js";
 import { c, parseFrontmatter, readJson, slugify, writeJson } from "../util.js";
+import { json, readBody } from "./http.js";
 import { PAGE } from "./page.js";
 
 const LIVE_RELOAD = `<script>
@@ -78,29 +79,6 @@ const LIVE_RELOAD = `<script>
   }, 1000);
 })();
 </script>`;
-
-function json(res: http.ServerResponse, data: unknown, status = 200): void {
-  res.writeHead(status, { "content-type": "application/json" });
-  res.end(JSON.stringify(data));
-}
-
-function readBody(req: http.IncomingMessage): Promise<any> {
-  return new Promise((resolve, reject) => {
-    let buf = "";
-    req.on("data", (d) => {
-      buf += d;
-      if (buf.length > 20_000_000) reject(new Error("body too large"));
-    });
-    req.on("end", () => {
-      try {
-        resolve(buf ? JSON.parse(buf) : {});
-      } catch (e) {
-        reject(e);
-      }
-    });
-    req.on("error", reject);
-  });
-}
 
 function listAgentFiles(co: Company, agent: string): { path: string; size: number }[] {
   const out: { path: string; size: number }[] = [];
