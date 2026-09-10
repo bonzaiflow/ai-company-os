@@ -1,8 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { Command } from "commander";
+import { loadConfig } from "../config.js";
+import { createProvider } from "../llm/index.js";
+import { skillNames } from "../core/skills.js";
+import { plannerSystem, planTurn } from "../planner.js";
 import type { ChatMessage, Plan } from "../types.js";
-import { c, readJson, slugify } from "../util.js";
+import { c, readJson, slugify, writeJson } from "../util.js";
 import { fail, out, withJson, type CliCtx } from "./helpers.js";
 
 function planFile(root: string, slug: string): string {
@@ -100,6 +104,96 @@ export function registerPlansCommands(program: Command, ctx: CliCtx): void {
         }
         deletePlanFiles(ctx.root, slug);
         out({ ok: true, deleted: slug }, () => console.log(c.green(`deleted plan ${slug}`)));
+      })
+  );
+
+  withJson(
+    plans
+      .command("chat")
+      .description("one planning turn against a draft (creates slug if new)")
+      .argument("<slug>", "plan slug")
+      .argument("<message...>", "owner message")
+      .option("-p, --provider <name>")
+      .option("-m, --model <model>")
+      .action(async (slugArg: string, words: string[], opts) => {
+        const slug = slugify(slugArg);
+        const message = words.join(" ").trim();
+        if (!message) fail("message required");
+        const cfg = loadConfig(ctx.root);
+        const provider = createProvider(
+          cfg,
+          opts.provider || cfg.roles?.planning || undefined,
+          opts.model || undefined
+        );
+        const history = readJson<ChatMessage[]>(planChatFile(ctx.root, slug), []);
+        let uploadsNote = "";
+        const upDir = path.join(ctx.root, "plans", slug, "uploads");
+        if (fs.existsSync(upDir)) {
+          const files = fs.readdirSync(upDir);
+          if (files.length) {
+            uploadsNote =
+              `\n\nThe owner has ALREADY uploaded data files that will be available to the company at ` +
+              `data/uploads/: ${files.join(", ")}. Plan around this: agents can import them with the ` +
+              `importdata tool instead of re-discovering from scratch.`;
+          }
+        }
+        const turn = await planTurn(provider, [
+          { role: "system", content: plannerSystem(skillNames(ctx.root, ctx.bundledSkills)) + uploadsNote },
+          ...history.slice(-16),
+          { role: "user", content: message },
+        ]);
+        fs.rmSync(path.join(ctx.root, "plans", `${slug}.json`), { force: true });
+        fs.rmSync(path.join(ctx.root, "plans", `${slug}.chat.json`), { force: true });
+        writeJson(path.join(ctx.root, "plans", slug, "plan.json"), turn.plan);
+        const nextHistory = [
+          ...history,
+          { role: "user" as const, content: message },
+          { role: "assistant" as const, content: JSON.stringify(turn) },
+        ];
+        writeJson(path.join(ctx.root, "plans", slug, "chat.json"), nextHistory);
+        out(
+          { ok: true, slug, reply: turn.reply, plan: turn.plan },
+          () => {
+            console.log(c.bold("planner:"));
+            console.log(turn.reply);
+            console.log(c.dim(`saved → plans/${slug}/plan.json`));
+          }
+        );
+      })
+  );
+
+  withJson(
+    plans
+      .command("upload")
+      .description("copy a file into plans/<slug>/uploads/ (copied into company on launch)")
+      .argument("<slug>", "plan slug")
+      .argument("<file>", "local file path")
+      .option("--as <name>", "destination filename")
+      .action(async (slugArg: string, fileArg: string, opts) => {
+        const slug = slugify(slugArg);
+        const src = path.resolve(fileArg);
+        if (!fs.existsSync(src) || !fs.statSync(src).isFile()) fail(`not a file: ${src}`);
+        const name = String(opts.as || path.basename(src))
+          .replace(/[^\w.\- ]+/g, "_")
+          .slice(0, 120);
+        const dir = path.join(ctx.root, "plans", slug, "uploads");
+        fs.mkdirSync(dir, { recursive: true });
+        const buf = fs.readFileSync(src);
+        if (buf.length > 15_000_000) fail("file too large (15MB max)");
+        fs.writeFileSync(path.join(dir, name), buf);
+        let preview: { rows: number; withEmail: number } | null = null;
+        let parseError: string | null = null;
+        try {
+          const { parseBusinessFile } = await import("../core/tools.js");
+          const parsed = parseBusinessFile(buf.toString("utf8"), name);
+          preview = { rows: parsed.length, withEmail: parsed.filter((b) => b.email).length };
+        } catch (e) {
+          parseError = e instanceof Error ? e.message : String(e);
+        }
+        out(
+          { ok: true, slug, path: `uploads/${name}`, preview, parseError, bytes: buf.length },
+          () => console.log(c.green(`uploaded → plans/${slug}/uploads/${name} (${buf.length} B)`))
+        );
       })
   );
 }

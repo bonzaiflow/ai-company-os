@@ -2,6 +2,8 @@ import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import type { Command } from "commander";
+import { loadConfig } from "../config.js";
+import { createProvider } from "../llm/index.js";
 import { c } from "../util.js";
 import {
   companyOption,
@@ -257,6 +259,121 @@ export function registerDbCommands(program: Command, ctx: CliCtx): void {
             fail((e as Error).message);
           } finally {
             handle?.close();
+          }
+        })
+    )
+  );
+
+  withJson(
+    companyOption(
+      db
+        .command("prompt")
+        .description("natural-language → read-only SQL (does not execute)")
+        .argument("<db>", "database filename")
+        .argument("<prompt...>", "what you want to know")
+        .option("--table <name>", "hint: focus on this table")
+        .action(async (dbName: string, promptWords: string[], opts) => {
+          const co = openCompany(ctx, opts.company);
+          const prompt = promptWords.join(" ").trim();
+          if (!prompt) fail("prompt required");
+          if (!/^[\w.-]+$/.test(dbName)) fail("invalid db name");
+          const dbPath = path.join(co.dir, "data", dbName);
+          if (!fs.existsSync(dbPath)) fail(`no such database ${dbName}`);
+
+          let schemaText = "";
+          try {
+            const handle = openDb(co, dbName);
+            const tables = (
+              handle.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as {
+                name: string;
+              }[]
+            ).map((t) => t.name);
+            const lines: string[] = [];
+            for (const name of tables) {
+              const cols = handle.prepare(`PRAGMA table_info("${name}")`).all() as {
+                name: string;
+                type: string;
+                notnull: number;
+                pk: number;
+              }[];
+              const colDesc = cols
+                .map((col) => {
+                  const bits = [col.name, col.type || "ANY"];
+                  if (col.pk) bits.push("PK");
+                  if (col.notnull) bits.push("NOT NULL");
+                  return bits.join(" ");
+                })
+                .join(", ");
+              lines.push(`- ${name} (${colDesc})`);
+            }
+            handle.close();
+            schemaText = lines.length ? lines.join("\n") : "(no tables)";
+          } catch (e) {
+            fail((e as Error).message);
+          }
+
+          const cfg = loadConfig(ctx.root);
+          const meta = co.meta;
+          let roleKind: "execution" | "agents" | "default" = "default";
+          let roleUsed: string;
+          let modelUsed: string | undefined;
+          if (meta.roles?.execution) {
+            roleKind = "execution";
+            roleUsed = meta.roles.execution;
+            modelUsed = meta.models?.execution ?? cfg.models?.execution;
+          } else if (meta.roles?.agents) {
+            roleKind = "agents";
+            roleUsed = meta.roles.agents;
+            modelUsed = meta.models?.agents ?? cfg.models?.agents ?? meta.model;
+          } else if (cfg.roles?.execution) {
+            roleKind = "execution";
+            roleUsed = cfg.roles.execution;
+            modelUsed = cfg.models?.execution;
+          } else if (cfg.roles?.agents) {
+            roleKind = "agents";
+            roleUsed = cfg.roles.agents;
+            modelUsed = cfg.models?.agents ?? meta.model;
+          } else {
+            roleUsed = meta.provider || cfg.defaultProvider;
+            modelUsed = meta.model;
+          }
+
+          let provider;
+          try {
+            provider = createProvider(cfg, roleUsed, modelUsed);
+          } catch (e) {
+            fail((e as Error).message);
+          }
+
+          const focusTable = String(opts.table ?? "").trim();
+          const system =
+            "You write SQLite read-only queries for a data browser.\n" +
+            "Rules:\n" +
+            "- Reply with ONLY one SQL statement. No prose, no markdown fences, no comments.\n" +
+            "- Allowed: SELECT, WITH (CTE), PRAGMA, EXPLAIN. Never write/modify data.\n" +
+            "- Use double-quoted identifiers when needed. Prefer LIMIT 50 unless the user asks otherwise.\n" +
+            "- Stick to the schema below; do not invent tables or columns.\n" +
+            (focusTable ? `- The user is currently viewing table "${focusTable}". Prefer it when relevant.\n` : "") +
+            `\nDatabase file: ${dbName}\nSchema:\n${schemaText}`;
+
+          try {
+            const result = await provider.chat([
+              { role: "system", content: system },
+              { role: "user", content: prompt },
+            ]);
+            let sql = String(result.content ?? "").trim();
+            const fence = sql.match(/```(?:sql|sqlite)?\s*([\s\S]*?)```/i);
+            if (fence) sql = fence[1].trim();
+            sql = sql.replace(/;+\s*$/, "").trim();
+            if (!/^\s*(select|pragma|with|explain)/i.test(sql)) {
+              fail(`model did not return a read-only query: ${String(result.content ?? "").slice(0, 500)}`);
+            }
+            out(
+              { sql, role: roleKind, provider: provider.name, model: provider.model },
+              () => console.log(sql)
+            );
+          } catch (e) {
+            fail((e as Error).message);
           }
         })
     )
