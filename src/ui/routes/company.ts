@@ -93,7 +93,7 @@ export const handleCompanyRoutes: RouteHandler = async ({ root, req, res, url })
       const profileFile = path.join(co.agentDir(a.name), "profile.md");
       return {
         ...a,
-        llm: effectiveAgentLlm(cfg, co, a),
+        llm: effectiveAgentLlm(cfg, co.meta, a),
         profile: fs.existsSync(profileFile) ? fs.readFileSync(profileFile, "utf8") : "",
         files: listAgentFiles(co, a.name),
       };
@@ -121,7 +121,7 @@ export const handleCompanyRoutes: RouteHandler = async ({ root, req, res, url })
     const cfg = loadConfig(root);
     try {
       const agent = co.loadAgent(name);
-      json(res, { name: agent.name, llm: effectiveAgentLlm(cfg, co, agent), agent });
+      json(res, { name: agent.name, llm: effectiveAgentLlm(cfg, co.meta, agent), agent });
     } catch (e) {
       json(res, { error: (e as Error).message }, 404);
     }
@@ -155,7 +155,7 @@ export const handleCompanyRoutes: RouteHandler = async ({ root, req, res, url })
         }
       }
       co.saveAgent(agent);
-      json(res, { ok: true, name: agent.name, llm: effectiveAgentLlm(cfg, co, agent), agent });
+      json(res, { ok: true, name: agent.name, llm: effectiveAgentLlm(cfg, co.meta, agent), agent });
     } catch (e) {
       json(res, { error: (e as Error).message }, 400);
     }

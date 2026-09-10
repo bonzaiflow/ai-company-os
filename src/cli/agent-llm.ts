@@ -46,7 +46,7 @@ export function registerAgentLlmCommands(program: Command, ctx: CliCtx): void {
             if (opts.model !== undefined) agent.model = String(opts.model);
           }
           co.saveAgent(agent);
-          const llm = effectiveAgentLlm(cfg, co, agent);
+          const llm = effectiveAgentLlm(cfg, co.meta, agent);
           out(
             { ok: true, agent: agent.name, llm },
             () => {

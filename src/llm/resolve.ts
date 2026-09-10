@@ -1,5 +1,4 @@
 import type { AgentSpec, AiCompanyOsConfig, CompanyMeta, LLMProvider, RoleDefaults } from "../types.js";
-import type { Company } from "../core/store.js";
 import { createProvider } from "./index.js";
 
 export type LlmRole = keyof RoleDefaults; // planning | agents | execution
@@ -104,15 +103,16 @@ export function resolveHelperLlm(
   return { ...agents, roleKind: "default" };
 }
 
-/** Effective LLM for an agent in a company (for CLI/UI display). */
+/** Effective LLM for an agent (for CLI/UI display). Takes meta, not Company,
+ * so llm/ stays free of core/store imports. */
 export function effectiveAgentLlm(
   cfg: AiCompanyOsConfig,
-  co: Company,
+  meta: CompanyMeta,
   agent: AgentSpec
 ): LlmResolution & { override: { provider?: string; model?: string } } {
   const r = resolveLlm(cfg, {
     role: "agents",
-    meta: co.meta,
+    meta,
     agent,
   });
   return {

@@ -436,7 +436,7 @@ program
       : [];
     const agent = co.loadAgent(name);
     const cfg = loadConfig(ROOT);
-    const llm = effectiveAgentLlm(cfg, co, agent);
+    const llm = effectiveAgentLlm(cfg, co.meta, agent);
     out(
       { agent, llm, profile, files: listAgentFiles(co, name), workspace },
       () => {

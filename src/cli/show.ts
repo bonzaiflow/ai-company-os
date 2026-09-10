@@ -71,7 +71,7 @@ export function registerShowCommands(program: Command, ctx: CliCtx): void {
           const cfg = loadConfig(ctx.root);
           const agents = co.listAgents().map((a) => ({
             ...a,
-            llm: effectiveAgentLlm(cfg, co, a),
+            llm: effectiveAgentLlm(cfg, co.meta, a),
           }));
           out({ agents }, () => {
             for (const a of agents) {
