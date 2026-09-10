@@ -4,8 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-/** Compiled CLI next to this module: dist/cli.js */
-export const CLI_JS = path.resolve(HERE, "cli.js");
+/** Compiled CLI lives at dist/cli.js (this module is dist/mcp/run.js). */
+export const CLI_JS = path.resolve(HERE, "..", "cli.js");
 
 export function resolveWorkspaceRoot(explicit?: string): string {
   const fromEnv = process.env.AI_COMPANY_OS_ROOT || process.env.AI_COMPANY_OS_WORKSPACE;
