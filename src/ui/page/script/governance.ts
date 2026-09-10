@@ -1190,29 +1190,57 @@ function openConnectorEditor(kind, data) {
         actions.appendChild(testEmail);
       }
       if (kind === 'telegram') {
+        function persistTelegramForm() {
+          var tgCfg = collectTelegram();
+          if (!tgCfg) {
+            showToast('Bot token env var is required — fill it and Save first', 'err');
+            return Promise.reject(new Error('Bot token env var is required'));
+          }
+          return saveConnectorsPayload(mergeConnectors({ telegram: tgCfg }, null), gated).then(function () {
+            c.telegram = tgCfg;
+            data.connectors = mergeConnectors({ telegram: tgCfg }, null);
+          });
+        }
+
         var testTg = el('button', 'btn', 'Send menu');
         testTg.onclick = function () {
           var chatId = (fields.tgChats._input.value.split(/[,\\s]+/).filter(Boolean)[0]) || '';
-          testConnector('telegram', { chatId: chatId, menu: true }, statusEl);
+          if (!chatId) {
+            showToast('Add your chat id first (or message the bot and read getUpdates)', 'err');
+            return;
+          }
+          testTg.disabled = true;
+          statusEl.textContent = 'Saving\\u2026';
+          persistTelegramForm()
+            .then(function () { return testConnector('telegram', { chatId: chatId, menu: true }, statusEl); })
+            .finally(function () { testTg.disabled = false; });
         };
         actions.appendChild(testTg);
 
         var setWh = el('button', 'btn', 'Set webhook');
         setWh.onclick = function () {
           var hookUrl = location.origin + (data.telegramHookPath || ('/api/hooks/telegram/' + companySlug));
-          statusEl.textContent = 'Setting webhook\\u2026';
+          statusEl.textContent = 'Saving\\u2026';
           setWh.disabled = true;
-          fetch('/api/connectors/telegram/webhook', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ company: companySlug, action: 'set', url: hookUrl })
-          })
-            .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.statusText); return j; }); })
+          persistTelegramForm()
+            .then(function () {
+              statusEl.textContent = 'Setting webhook\\u2026';
+              return fetch('/api/connectors/telegram/webhook', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ company: companySlug, action: 'set', url: hookUrl })
+              }).then(function (r) {
+                return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.statusText); return j; });
+              });
+            })
             .then(function (j) {
               statusEl.textContent = j.detail || 'Webhook set';
               showToast('Telegram webhook set', 'ok');
             })
-            .catch(function (e) { statusEl.textContent = e.message || String(e); })
+            .catch(function (e) {
+              statusEl.textContent = e.message || String(e);
+              showToast(e.message || String(e), 'err');
+            })
             .finally(function () { setWh.disabled = false; });
         };
         actions.appendChild(setWh);
