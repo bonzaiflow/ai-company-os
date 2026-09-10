@@ -77,8 +77,8 @@ export const telegramTool: Tool = {
     "Requires connectors.telegram.botTokenEnv. Owners also use the interactive bot (buttons) via telegram listen / webhook.",
   async run(ctx, args) {
     const cfg = ctx.company.meta.connectors?.telegram;
-    if (!cfg?.botTokenEnv) {
-      return "error: telegram connector not configured — set company.json connectors.telegram.botTokenEnv";
+    if (!cfg) {
+      return "error: telegram connector not configured — set company.json connectors.telegram";
     }
     const op = str(args.op) || "send";
     if (op === "send") {

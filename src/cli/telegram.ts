@@ -31,7 +31,7 @@ export function registerTelegramCommands(program: Command, ctx: CliCtx): void {
         .action(async (opts) => {
           const co = openCompany(ctx, opts.company);
           const cfg = co.meta.connectors?.telegram;
-          if (!cfg?.botTokenEnv) fail("telegram connector not configured — use connectors set first");
+          if (!cfg) fail("telegram connector not configured — use connectors set first");
           await listenTelegram(co, cfg, {
             configRoot: ctx.root,
             log: (l) => {
@@ -51,7 +51,7 @@ export function registerTelegramCommands(program: Command, ctx: CliCtx): void {
         .action(async (opts) => {
           const co = openCompany(ctx, opts.company);
           const cfg = co.meta.connectors?.telegram;
-          if (!cfg?.botTokenEnv) fail("telegram connector not configured");
+          if (!cfg) fail("telegram connector not configured");
           const chatId = String(opts.chatId || cfg.allowedChatIds?.[0] || "");
           if (!chatId) fail("chatId required (--chat-id or allowedChatIds[0])");
           try {
@@ -74,7 +74,7 @@ export function registerTelegramCommands(program: Command, ctx: CliCtx): void {
         .action(async (action: string, opts) => {
           const co = openCompany(ctx, opts.company);
           const cfg = co.meta.connectors?.telegram;
-          if (!cfg?.botTokenEnv) fail("telegram connector not configured");
+          if (!cfg) fail("telegram connector not configured");
           try {
             if (action === "set") {
               const url = String(opts.url || "").trim();

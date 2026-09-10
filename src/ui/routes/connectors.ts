@@ -30,7 +30,11 @@ export const handleConnectorsRoutes: RouteHandler = async ({ root, req, res, url
       secrets: {
         emailSmtp: envSet(connectors.email?.smtp?.passEnv),
         emailImap: envSet(connectors.email?.imap?.passEnv),
-        telegram: envSet(connectors.telegram?.botTokenEnv),
+        telegram: envSet(
+          connectors.telegram
+            ? (connectors.telegram.botTokenEnv || "").trim() || "TELEGRAM_BOT_TOKEN"
+            : undefined
+        ),
         telegramWebhook: envSet(connectors.telegram?.webhookSecretEnv),
         webhook: envSet(connectors.webhook?.inboundSecretEnv),
       },
@@ -51,8 +55,12 @@ export const handleConnectorsRoutes: RouteHandler = async ({ root, req, res, url
     if (connectors.email?.smtp?.host && connectors.email?.smtp?.user) {
       cleaned.email = connectors.email;
     }
-    if (connectors.telegram?.botTokenEnv) {
-      cleaned.telegram = connectors.telegram;
+    if (connectors.telegram) {
+      const tg = connectors.telegram;
+      cleaned.telegram = {
+        ...tg,
+        botTokenEnv: (tg.botTokenEnv ?? "").trim() || "TELEGRAM_BOT_TOKEN",
+      };
     }
     if (connectors.webhook?.inboundSecretEnv) {
       cleaned.webhook = connectors.webhook;
@@ -143,7 +151,7 @@ export const handleConnectorsRoutes: RouteHandler = async ({ root, req, res, url
     const body = await readBody(req);
     const co = Company.open(root, String(body.company ?? ""));
     const tg = co.meta.connectors?.telegram;
-    if (!tg?.botTokenEnv) {
+    if (!tg) {
       json(res, { error: "telegram connector not configured" }, 400);
       return true;
     }
@@ -178,7 +186,7 @@ export const handleConnectorsRoutes: RouteHandler = async ({ root, req, res, url
       const slug = decodeURIComponent(tgHook[1]);
       const co = Company.open(root, slug);
       const tg = co.meta.connectors?.telegram;
-      if (!tg?.botTokenEnv) {
+      if (!tg) {
         json(res, { error: "telegram connector not configured for this company" }, 404);
         return true;
       }

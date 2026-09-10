@@ -130,7 +130,8 @@ export interface EmailConnectorConfig {
 export type TelegramInboundMode = "bot" | "task";
 
 export interface TelegramConnectorConfig {
-  botTokenEnv: string;
+  /** Env var holding the BotFather token. Empty/omitted → TELEGRAM_BOT_TOKEN. */
+  botTokenEnv?: string;
   /** empty = allow any chat (dev); set in production */
   allowedChatIds?: string[];
   /** agent name that receives inbound messages; defaults to chief */

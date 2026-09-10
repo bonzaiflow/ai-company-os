@@ -47,7 +47,11 @@ export function registerConnectorCommands(program: Command, ctx: CliCtx): void {
               secrets: {
                 emailSmtp: envSet(connectors.email?.smtp?.passEnv),
                 emailImap: envSet(connectors.email?.imap?.passEnv),
-                telegram: envSet(connectors.telegram?.botTokenEnv),
+                telegram: envSet(
+                  connectors.telegram
+                    ? (connectors.telegram.botTokenEnv || "").trim() || "TELEGRAM_BOT_TOKEN"
+                    : undefined
+                ),
                 telegramWebhook: envSet(connectors.telegram?.webhookSecretEnv),
                 webhook: envSet(connectors.webhook?.inboundSecretEnv),
               },
@@ -75,7 +79,13 @@ export function registerConnectorCommands(program: Command, ctx: CliCtx): void {
           const connectors = parseConnectorsJson(jsonArg);
           const cleaned: ConnectorsConfig = {};
           if (connectors.email?.smtp?.host && connectors.email?.smtp?.user) cleaned.email = connectors.email;
-          if (connectors.telegram?.botTokenEnv) cleaned.telegram = connectors.telegram;
+          if (connectors.telegram) {
+            const tg = connectors.telegram;
+            cleaned.telegram = {
+              ...tg,
+              botTokenEnv: (tg.botTokenEnv ?? "").trim() || "TELEGRAM_BOT_TOKEN",
+            };
+          }
           if (connectors.webhook?.inboundSecretEnv) cleaned.webhook = connectors.webhook;
           const patch: { connectors: ConnectorsConfig; policies?: { approveTools?: string[] } } = {
             connectors: cleaned,

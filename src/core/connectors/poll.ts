@@ -22,7 +22,7 @@ export async function pollConnectors(co: Company): Promise<PollResult> {
     }
   }
 
-  if (connectors.telegram?.botTokenEnv) {
+  if (connectors.telegram) {
     try {
       ingested += await pollTelegram(co, connectors.telegram);
     } catch (e) {

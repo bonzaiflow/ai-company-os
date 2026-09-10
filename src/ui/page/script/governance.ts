@@ -702,8 +702,9 @@ function connChannelStatus(kind, data) {
     };
   }
   if (kind === 'telegram') {
-    if (!c.telegram || !c.telegram.botTokenEnv) return { pill: 'neutral', label: 'Off', meta: 'Not configured' };
-    if (!s.telegram) return { pill: 'waiting', label: 'Needs secret', meta: c.telegram.botTokenEnv };
+    if (!c.telegram) return { pill: 'neutral', label: 'Off', meta: 'Not configured' };
+    var tgEnv = c.telegram.botTokenEnv || 'TELEGRAM_BOT_TOKEN';
+    if (!s.telegram) return { pill: 'waiting', label: 'Needs secret', meta: tgEnv };
     var chats = (c.telegram.allowedChatIds || []).length;
     var mode = c.telegram.mode || 'bot';
     return {
@@ -964,8 +965,8 @@ function openConnectorEditor(kind, data) {
         fields.tgToken = connField('Bot token env var name', tg.botTokenEnv || '', {
           placeholder: 'TELEGRAM_BOT_TOKEN',
           hint: secrets.telegram
-            ? 'Env is set on this machine'
-            : 'Type exactly TELEGRAM_BOT_TOKEN here (the name). Put the real token in .env / export — not in this box.'
+            ? 'Env is set on this machine (default name: TELEGRAM_BOT_TOKEN)'
+            : 'Leave blank to use TELEGRAM_BOT_TOKEN. Put the real token in .env — not in this box.'
         });
         fields.tgChats = connField('Allowed chat ids', (tg.allowedChatIds || []).join(', '), {
           placeholder: '123456789',
@@ -1104,8 +1105,7 @@ function openConnectorEditor(kind, data) {
       }
 
       function collectTelegram() {
-        var token = fields.tgToken._input.value.trim();
-        if (!token) return null;
+        var token = fields.tgToken._input.value.trim() || 'TELEGRAM_BOT_TOKEN';
         var chats = fields.tgChats._input.value.split(/[,\\s]+/).map(function (s) { return s.trim(); }).filter(Boolean);
         var mode = (fields.tgMode && fields.tgMode._input.value.trim()) || 'bot';
         var whSecret = fields.tgWhSecret ? fields.tgWhSecret._input.value.trim() : '';
@@ -1144,7 +1144,6 @@ function openConnectorEditor(kind, data) {
           var tgCfg = collectTelegram();
           if (tgCfg) patch = { telegram: tgCfg };
           else if (c.telegram) remove = 'telegram';
-          else { showToast('Bot token env var is required', 'err'); return; }
         }
         if (kind === 'webhook') {
           var whCfg = collectWebhook();
@@ -1194,10 +1193,6 @@ function openConnectorEditor(kind, data) {
       if (kind === 'telegram') {
         function persistTelegramForm() {
           var tgCfg = collectTelegram();
-          if (!tgCfg) {
-            showToast('Bot token env var is required — fill it and Save first', 'err');
-            return Promise.reject(new Error('Bot token env var is required'));
-          }
           return saveConnectorsPayload(mergeConnectors({ telegram: tgCfg }, null), gated).then(function () {
             c.telegram = tgCfg;
             data.connectors = mergeConnectors({ telegram: tgCfg }, null);

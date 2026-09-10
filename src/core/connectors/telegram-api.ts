@@ -60,7 +60,8 @@ export async function tgCall<T>(
 }
 
 export function telegramToken(cfg: TelegramConnectorConfig): string {
-  return envSecret(cfg.botTokenEnv, "telegram");
+  const name = (cfg.botTokenEnv ?? "").trim() || "TELEGRAM_BOT_TOKEN";
+  return envSecret(name, "telegram");
 }
 
 export function assertAllowedChat(cfg: TelegramConnectorConfig, chatId: string): void {
