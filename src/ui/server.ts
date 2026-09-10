@@ -34,27 +34,21 @@ import {
 } from "../config.js";
 import { chiefChatStream } from "../core/chat.js";
 import { skillNames } from "../core/skills.js";
-import { listCheckins, runCheckin } from "../core/checkin.js";
+import { listCheckins } from "../core/checkin.js";
 import { exportCompanyZip, type CompanyExportMode } from "../core/export.js";
-import {
-  handleWebhook,
-  pollConnectors,
-  publicState as connectorPublicState,
-  sendEmail,
-  sendTelegram,
-  postWebhook,
-} from "../core/connectors/index.js";
-import { decideApproval, listApprovals } from "../core/governance.js";
+import { listApprovals } from "../core/governance.js";
 import { runDaemon } from "../core/scheduler.js";
 import { flushQueue, raiseTaskPriority, requeueStuckRunning, runLoop, tickWave } from "../core/runtime.js";
 import { Company } from "../core/store.js";
-import { createProvider, resolveCliCommand } from "../llm/index.js";
-import { effectiveAgentLlm, resolveHelperLlm } from "../llm/resolve.js";
-import type { ChatMessage, ConnectorsConfig } from "../types.js";
+import { resolveCliCommand } from "../llm/index.js";
+import { effectiveAgentLlm } from "../llm/resolve.js";
+import type { ChatMessage } from "../types.js";
 import { c, slugify, writeJson } from "../util.js";
 import { json, readBody } from "./http.js";
 import { PAGE } from "./page.js";
+import { handleConnectorsRoutes } from "./routes/connectors.js";
 import { handleDbRoutes } from "./routes/db.js";
+import { handleGovernanceRoutes } from "./routes/governance.js";
 import { handlePlansRoutes } from "./routes/plans.js";
 import { handleSkillsRoutes } from "./routes/skills.js";
 import { handleUploadRoutes } from "./routes/uploads.js";
@@ -520,183 +514,8 @@ export function serveUi(
         return;
       }
 
-      if (req.method === "GET" && url.pathname === "/api/connectors") {
-        const co = Company.open(root, url.searchParams.get("company") ?? "");
-        const connectors = co.meta.connectors ?? {};
-        const envSet = (name?: string) => !!(name && process.env[name]);
-        json(res, {
-          connectors,
-          state: connectorPublicState(co),
-          secrets: {
-            emailSmtp: envSet(connectors.email?.smtp?.passEnv),
-            emailImap: envSet(connectors.email?.imap?.passEnv),
-            telegram: envSet(connectors.telegram?.botTokenEnv),
-            webhook: envSet(connectors.webhook?.inboundSecretEnv),
-          },
-          hookPath: `/api/hooks/${co.meta.slug}`,
-          agents: co.listAgents().map((a) => a.name),
-          approveTools: co.meta.policies?.approveTools ?? [],
-        });
-        return;
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/connectors") {
-        const body = await readBody(req);
-        const co = Company.open(root, String(body.company ?? ""));
-        const connectors = (body.connectors ?? {}) as ConnectorsConfig;
-        // Strip empty connector blocks so disabled = absent
-        const cleaned: ConnectorsConfig = {};
-        if (connectors.email?.smtp?.host && connectors.email?.smtp?.user) {
-          cleaned.email = connectors.email;
-        }
-        if (connectors.telegram?.botTokenEnv) {
-          cleaned.telegram = connectors.telegram;
-        }
-        if (connectors.webhook?.inboundSecretEnv) {
-          cleaned.webhook = connectors.webhook;
-        }
-        const patch: { connectors: ConnectorsConfig; policies?: { approveTools?: string[] } } = {
-          connectors: cleaned,
-        };
-        if (body.gateOutbound) {
-          const current = new Set(co.meta.policies?.approveTools ?? []);
-          for (const t of ["email", "telegram", "webhook"]) current.add(t);
-          patch.policies = { ...(co.meta.policies ?? {}), approveTools: [...current] };
-        }
-        co.saveMeta(patch);
-        co.audit({
-          type: "connectors.saved",
-          ok: true,
-          detail: Object.keys(cleaned).join(",") || "(none)",
-        });
-        json(res, { ok: true, connectors: cleaned });
-        return;
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/connectors/poll") {
-        const body = await readBody(req);
-        const co = Company.open(root, String(body.company ?? ""));
-        const result = await pollConnectors(co);
-        json(res, { ok: true, ...result, state: connectorPublicState(co) });
-        return;
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/connectors/test") {
-        const body = await readBody(req);
-        const co = Company.open(root, String(body.company ?? ""));
-        const kind = String(body.kind ?? "");
-        const cfg = co.meta.connectors;
-        try {
-          if (kind === "email") {
-            if (!cfg?.email) throw new Error("email connector not configured");
-            const to = String(body.to || cfg.email.from || cfg.email.smtp.user);
-            const msg = await sendEmail(cfg.email, {
-              to,
-              subject: "[ai-company-os] test email",
-              body: `Test from company ${co.meta.slug} at ${new Date().toISOString()}`,
-            });
-            json(res, { ok: true, detail: msg });
-            return;
-          }
-          if (kind === "telegram") {
-            if (!cfg?.telegram) throw new Error("telegram connector not configured");
-            const chatId = String(body.chatId || cfg.telegram.allowedChatIds?.[0] || "");
-            if (!chatId) throw new Error("chatId required (or set allowedChatIds[0])");
-            const msg = await sendTelegram(cfg.telegram, {
-              chatId,
-              text: `Test from ai-company-os company ${co.meta.slug}`,
-            });
-            json(res, { ok: true, detail: msg });
-            return;
-          }
-          if (kind === "webhook") {
-            const urlOut = String(body.url || "");
-            if (!urlOut) throw new Error("url required for webhook test");
-            const msg = await postWebhook(cfg?.webhook, {
-              url: urlOut,
-              body: { text: `test from ${co.meta.slug}`, from: "ai-company-os" },
-            });
-            json(res, { ok: true, detail: msg });
-            return;
-          }
-          json(res, { error: "kind must be email|telegram|webhook" }, 400);
-        } catch (e) {
-          json(res, { error: (e as Error).message }, 400);
-        }
-        return;
-      }
-
-      {
-        const hookMatch = /^\/api\/hooks\/([^/]+)$/.exec(url.pathname);
-        if (req.method === "POST" && hookMatch) {
-          const slug = decodeURIComponent(hookMatch[1]);
-          const co = Company.open(root, slug);
-          const wh = co.meta.connectors?.webhook;
-          if (!wh?.inboundSecretEnv) {
-            json(res, { error: "webhook connector not configured for this company" }, 404);
-            return;
-          }
-          const secret =
-            (req.headers["x-connector-secret"] as string | undefined) ||
-            url.searchParams.get("secret") ||
-            undefined;
-          const body = await readBody(req);
-          try {
-            const result = handleWebhook(co, wh, body, secret);
-            json(res, { ok: true, ...result });
-          } catch (e) {
-            const msg = (e as Error).message;
-            json(res, { error: msg }, msg.includes("secret") ? 401 : 400);
-          }
-          return;
-        }
-      }
-
-      if (req.method === "GET" && url.pathname === "/api/approvals") {
-        const co = Company.open(root, url.searchParams.get("company") ?? "");
-        json(res, listApprovals(co));
-        return;
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/approvals/decide") {
-        const body = await readBody(req);
-        const co = Company.open(root, String(body.company ?? ""));
-        const a = decideApproval(co, String(body.id ?? ""), !!body.approve, body.note ? String(body.note) : undefined);
-        json(res, { ok: true, status: a.status });
-        return;
-      }
-
-      if (req.method === "GET" && url.pathname === "/api/checkins") {
-        const co = Company.open(root, url.searchParams.get("company") ?? "");
-        json(res, listCheckins(co).reverse());
-        return;
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/checkin") {
-        const body = await readBody(req);
-        const co = Company.open(root, String(body.company ?? ""));
-        const ci = await runCheckin(co, loadConfig(root));
-        json(res, ci);
-        return;
-      }
-
-      if (req.method === "GET" && url.pathname === "/api/audit/export") {
-        const co = Company.open(root, url.searchParams.get("company") ?? "");
-        const file = path.join(co.dir, "audit.jsonl");
-        res.writeHead(200, {
-          "content-type": "application/x-ndjson",
-          "content-disposition": `attachment; filename="${co.meta.slug}-audit.jsonl"`,
-        });
-        res.end(fs.existsSync(file) ? fs.readFileSync(file) : "");
-        return;
-      }
-
-      if (req.method === "GET" && url.pathname === "/api/audit/verify") {
-        const co = Company.open(root, url.searchParams.get("company") ?? "");
-        const bad = co.verifyAudit();
-        json(res, { intact: !bad, problem: bad });
-        return;
-      }
+      if (await handleConnectorsRoutes({ root, bundledSkillsDir, req, res, url })) return;
+      if (await handleGovernanceRoutes({ root, bundledSkillsDir, req, res, url })) return;
 
       if (req.method === "GET" && url.pathname === "/api/file") {
         const co = Company.open(root, url.searchParams.get("company") ?? "");
