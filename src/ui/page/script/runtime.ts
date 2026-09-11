@@ -409,6 +409,12 @@ function planningChatDisplayContent(m) {
 
 function renderChiefChat(body) {
   var chief = chiefOf();
+  var prevLog = document.getElementById('chiefChatLog');
+  var prevScroll = prevLog ? prevLog.scrollTop : null;
+  var prevInput = document.getElementById('chiefInput');
+  var prevVal = prevInput ? prevInput.value : '';
+  var prevFocused = prevInput && document.activeElement === prevInput;
+
   body.innerHTML = '';
   body.className = 'side-inner agent-body chat-mode';
   body.style.display = 'flex';
@@ -472,7 +478,14 @@ function renderChiefChat(body) {
   box.appendChild(composer.dock);
   body.appendChild(box);
 
-  anchor.scrollIntoView({ behavior: 'smooth' });
+  var ta = document.getElementById('chiefInput');
+  if (ta && prevVal) {
+    ta.value = prevVal;
+    if (typeof resizeChatTextarea === 'function') resizeChatTextarea(ta);
+    if (prevFocused) ta.focus();
+  }
+  if (prevScroll != null) log.scrollTop = prevScroll;
+  else anchor.scrollIntoView({ behavior: 'smooth' });
 }
 
 function finishChiefStream(hist, reply, reasoning, created) {

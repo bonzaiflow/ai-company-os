@@ -450,8 +450,11 @@ function refresh(opts) {
       }
       renderTasks(s.tasks);
       renderOrg(s.agents);
-      if (selectedTab !== 'chat' || chatJustLoaded || opts.paintChat) renderAgentPanel();
-      else if (selectedTab === 'chat') ensureChatPathsLinked();
+      // Always re-paint the agent panel unless a chief reply is streaming
+      // (chat path linkify + task cards need a fresh DOM).
+      if (!chiefSending || chatJustLoaded || opts.paintChat || selectedTab !== 'chat') {
+        renderAgentPanel();
+      }
       renderBudget(s.spent.tokens, s.meta.budget.tokens);
       renderLiveStrip();
       noteDataSig(s.dataSig);
