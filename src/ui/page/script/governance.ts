@@ -333,6 +333,7 @@ function openCompanyFileModal(relPath, opts) {
   var isCsv = /\\.(csv|tsv)$/i.test(base);
   var isMd = /\\.(md|markdown)$/i.test(base);
   var eyebrow = opts.eyebrow || (isCsv ? 'CSV preview' : (isMd ? 'Markdown' : 'File'));
+  var fileCompany = opts.company || companySlug;
   showModal({
     eyebrow: eyebrow,
     title: base,
@@ -340,7 +341,7 @@ function openCompanyFileModal(relPath, opts) {
     back: opts.back,
     body: function (body) {
       body.appendChild(el('div', 'muted', 'Loading preview\\u2026'));
-      fetch('/api/file?company=' + encodeURIComponent(companySlug) + '&path=' + encodeURIComponent(rel))
+      fetch('/api/file?company=' + encodeURIComponent(fileCompany) + '&path=' + encodeURIComponent(rel))
         .then(function (r) { return r.json(); })
         .then(function (d) {
           body.innerHTML = '';

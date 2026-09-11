@@ -599,6 +599,7 @@ function openCompanyExport(slug, name) {
             viewBtn.type = 'button';
             viewBtn.onclick = function () {
               openCompanyFileModal(f.path, {
+                company: slug,
                 eyebrow: 'data/exports',
                 accent: '#34d399',
                 back: {
