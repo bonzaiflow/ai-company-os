@@ -5,7 +5,7 @@ import { companyDataSig, listAgentFiles } from "../../core/agent-files.js";
 import { loadConfig } from "../../config.js";
 import { chiefChatStream } from "../../core/chat.js";
 import { listCheckins } from "../../core/checkin.js";
-import { exportCompanyZip, type CompanyExportMode } from "../../core/export.js";
+import { exportCompanyZip, listDataExports, resolveDataExportFile, type CompanyExportMode } from "../../core/export.js";
 import { listApprovals } from "../../core/governance.js";
 import { Company } from "../../core/store.js";
 import { effectiveAgentLlm } from "../../llm/resolve.js";
@@ -175,6 +175,46 @@ export const handleCompanyRoutes: RouteHandler = async ({ root, req, res, url })
       }
     } catch (e) {
       json(res, { error: (e as Error).message }, 400);
+    }
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/company/data-exports") {
+    const slug = slugify(url.searchParams.get("company") ?? "");
+    if (!slug) {
+      json(res, { error: "company slug required" }, 400);
+      return true;
+    }
+    try {
+      const co = Company.open(root, slug);
+      json(res, { files: listDataExports(co) });
+    } catch (e) {
+      json(res, { error: (e as Error).message }, 400);
+    }
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/company/data-exports/download") {
+    const slug = slugify(url.searchParams.get("company") ?? "");
+    const file = url.searchParams.get("file") ?? url.searchParams.get("path") ?? "";
+    if (!slug) {
+      json(res, { error: "company slug required" }, 400);
+      return true;
+    }
+    try {
+      const co = Company.open(root, slug);
+      const resolved = resolveDataExportFile(co, file);
+      const buf = fs.readFileSync(resolved.abs);
+      res.writeHead(200, {
+        "content-type": "application/octet-stream",
+        "content-disposition": `attachment; filename="${resolved.name}"`,
+        "content-length": buf.length,
+        "cache-control": "no-store",
+      });
+      res.end(buf);
+    } catch (e) {
+      const msg = (e as Error).message;
+      json(res, { error: msg }, msg === "not found" ? 404 : 400);
     }
     return true;
   }

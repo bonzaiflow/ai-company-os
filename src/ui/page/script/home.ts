@@ -532,7 +532,7 @@ function openCompanyExport(slug, name) {
       callout.appendChild(copy);
       body.appendChild(callout);
 
-      var grid = el('div', 'conn-grid');
+      var grid = el('div', 'conn-grid cols-2');
       function card(mode, title, desc, cta) {
         var btn = el('button', 'conn-card');
         btn.type = 'button';
@@ -560,10 +560,81 @@ function openCompanyExport(slug, name) {
         'Download full.zip \\u2192'
       );
       body.appendChild(grid);
+
+      var filesWrap = el('div', 'export-files');
+      var filesHead = el('div', 'export-files-head');
+      filesHead.appendChild(document.createTextNode('data/exports'));
+      filesHead.appendChild(el('span', null, 'Loading\\u2026'));
+      filesWrap.appendChild(filesHead);
+      body.appendChild(filesWrap);
+
+      fetch('/api/company/data-exports?company=' + encodeURIComponent(slug))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          filesHead.querySelector('span').textContent = '';
+          var files = (d && d.files) || [];
+          if (d && d.error) {
+            filesHead.querySelector('span').textContent = d.error;
+            return;
+          }
+          filesHead.querySelector('span').textContent = files.length
+            ? (files.length + ' file' + (files.length === 1 ? '' : 's'))
+            : 'empty';
+          if (!files.length) {
+            var empty = el('div', 'export-file-row');
+            empty.appendChild(el('div', 'muted',
+              'No deliverables yet. Agents can write packs here (CSV, MD, SQL, \\u2026).'));
+            filesWrap.appendChild(empty);
+            return;
+          }
+          files.forEach(function (f) {
+            var row = el('div', 'export-file-row');
+            var meta = el('div', 'export-file-meta');
+            meta.appendChild(el('div', 'export-file-name', f.name));
+            meta.appendChild(el('div', 'export-file-sub',
+              formatBytes(f.bytes) + ' \\u00b7 ' + fmtTs(f.mtime)));
+            row.appendChild(meta);
+            var actions = el('div', 'export-file-actions');
+            var viewBtn = el('button', 'btn', 'View');
+            viewBtn.type = 'button';
+            viewBtn.onclick = function () {
+              openCompanyFileModal(f.path, {
+                eyebrow: 'data/exports',
+                accent: '#34d399',
+                back: {
+                  label: 'Export',
+                  go: function () { openCompanyExport(slug, name); }
+                }
+              });
+            };
+            actions.appendChild(viewBtn);
+            var dlBtn = el('button', 'btn', 'Download');
+            dlBtn.type = 'button';
+            dlBtn.onclick = function () {
+              window.location.href =
+                '/api/company/data-exports/download?company=' + encodeURIComponent(slug) +
+                '&file=' + encodeURIComponent(f.name);
+            };
+            actions.appendChild(dlBtn);
+            row.appendChild(actions);
+            filesWrap.appendChild(row);
+          });
+        })
+        .catch(function (e) {
+          filesHead.querySelector('span').textContent = e.message || String(e);
+        });
+
       body.appendChild(el('div', 'muted',
         'CLI: ai-company-os export ' + slug + ' --mode layout|full'));
     }
   });
+}
+
+function formatBytes(n) {
+  n = Number(n) || 0;
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1).replace(/\\.0$/, '') + ' KB';
+  return (n / (1024 * 1024)).toFixed(1).replace(/\\.0$/, '') + ' MB';
 }
 
 function downloadCompanyExport(mode, slug, btn, ctaLabel) {

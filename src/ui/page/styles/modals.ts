@@ -264,7 +264,31 @@ export const MODALS = `.modal-backdrop {
 }
 @media (min-width: 640px) {
   .conn-grid { grid-template-columns: repeat(3, 1fr); }
+  .conn-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
 }
+.export-files {
+  margin-top: 0.25rem; margin-bottom: 0.75rem;
+  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  background: var(--bg);
+}
+.export-files-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem;
+  padding: 0.65rem 0.9rem; border-bottom: 1px solid var(--border);
+  font-size: 0.78rem; font-weight: 600; color: var(--text);
+}
+.export-files-head span { font-weight: 400; color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 0.68rem; }
+.export-file-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.55rem 0.9rem; border-bottom: 1px solid var(--border);
+}
+.export-file-row:last-child { border-bottom: none; }
+.export-file-meta { min-width: 0; flex: 1; }
+.export-file-name {
+  font-family: "JetBrains Mono", monospace; font-size: 0.78rem; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.export-file-sub { font-size: 0.68rem; color: var(--muted); margin-top: 0.15rem; }
+.export-file-actions { display: flex; gap: 0.35rem; flex-shrink: 0; }
 .conn-card {
   display: flex; flex-direction: column; gap: 0.45rem; text-align: left;
   background: var(--bg); border: 1px solid var(--border); border-radius: 12px;

@@ -149,3 +149,55 @@ export function exportCompanyZip(co: Company, mode: CompanyExportMode): CompanyE
     throw e;
   }
 }
+
+export interface DataExportFile {
+  /** Path relative to company dir, e.g. data/exports/lead-pack.csv */
+  path: string;
+  name: string;
+  bytes: number;
+  mtime: string;
+}
+
+/** Agent/owner deliverables under companies/<slug>/data/exports/. */
+export function listDataExports(co: Company): DataExportFile[] {
+  const dir = path.join(co.dir, "data", "exports");
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return [];
+  const out: DataExportFile[] = [];
+  for (const name of fs.readdirSync(dir)) {
+    if (name.startsWith(".")) continue;
+    const full = path.join(dir, name);
+    let st: fs.Stats;
+    try {
+      st = fs.statSync(full);
+    } catch {
+      continue;
+    }
+    if (!st.isFile()) continue;
+    out.push({
+      path: `data/exports/${name}`,
+      name,
+      bytes: st.size,
+      mtime: st.mtime.toISOString(),
+    });
+  }
+  out.sort((a, b) => b.mtime.localeCompare(a.mtime) || a.name.localeCompare(b.name));
+  return out;
+}
+
+/** Resolve a safe absolute path under data/exports/; throws if invalid. */
+export function resolveDataExportFile(co: Company, relOrName: string): { abs: string; name: string; rel: string } {
+  const raw = String(relOrName ?? "").trim().replace(/\\/g, "/");
+  const name = path.basename(raw.includes("/") ? raw : raw);
+  if (!name || name === "." || name === ".." || name.includes("\0")) {
+    throw new Error("invalid export file name");
+  }
+  const abs = path.resolve(co.dir, "data", "exports", name);
+  const root = path.resolve(co.dir, "data", "exports");
+  if (abs !== root && !abs.startsWith(root + path.sep)) {
+    throw new Error("path escapes data/exports");
+  }
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+    throw new Error("not found");
+  }
+  return { abs, name, rel: `data/exports/${name}` };
+}
