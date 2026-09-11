@@ -264,6 +264,11 @@ pre.doc.json .jb { color: #e879f9; }
 }
 .setup-chat-msg-assistant .setup-chat-msg-body { color: var(--text); padding-right: 0.25rem; white-space: pre-wrap; }
 .setup-chat-msg-thinking .setup-chat-msg-body { padding: 0.15rem 0; }
+a.chat-path {
+  color: #60a5fa; text-decoration: underline; text-underline-offset: 2px;
+  word-break: break-all; cursor: pointer;
+}
+a.chat-path:hover { color: var(--link-strong, #93c5fd); }
 .setup-chat-created {
   display: flex; flex-direction: column; gap: 0.45rem;
   margin-top: 0.75rem; white-space: normal;

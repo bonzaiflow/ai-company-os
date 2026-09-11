@@ -340,11 +340,21 @@ function openCompanyFileModal(relPath, opts) {
     accent: opts.accent || '#60a5fa',
     back: opts.back,
     body: function (body) {
+      var actions = el('div', 'schedule-actions');
+      actions.style.marginBottom = '0.75rem';
+      var dl = el('button', 'btn', 'Download');
+      dl.type = 'button';
+      dl.onclick = function () {
+        window.location.href = companyFileDownloadUrl(rel, fileCompany);
+      };
+      actions.appendChild(dl);
+      body.appendChild(actions);
       body.appendChild(el('div', 'muted', 'Loading preview\\u2026'));
       fetch('/api/file?company=' + encodeURIComponent(fileCompany) + '&path=' + encodeURIComponent(rel))
         .then(function (r) { return r.json(); })
         .then(function (d) {
-          body.innerHTML = '';
+          // keep Download row; replace loading + preview area
+          while (body.childNodes.length > 1) body.removeChild(body.lastChild);
           if (d.error) {
             body.appendChild(el('div', 'muted', d.error));
             return;
@@ -369,7 +379,7 @@ function openCompanyFileModal(relPath, opts) {
           body.appendChild(pre);
         })
         .catch(function (e) {
-          body.innerHTML = '';
+          while (body.childNodes.length > 1) body.removeChild(body.lastChild);
           body.appendChild(el('div', 'muted', 'failed: ' + e));
         });
     }

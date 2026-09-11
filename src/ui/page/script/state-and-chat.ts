@@ -339,8 +339,51 @@ function appendChatCreatedTasks(host, created) {
 
 function fillChatMessageBody(body, content, created) {
   var text = created && created.length ? stripQueuedTaskLines(content) : content;
-  if (text) body.appendChild(document.createTextNode(text));
+  if (text) appendChatTextWithPaths(body, text);
   appendChatCreatedTasks(body, created);
+}
+
+/** Company-relative file paths agents mention (data/exports/…, agents/…, …). */
+var CHAT_PATH_RE = /\\b((?:data|agents|tasks|skills)\\/[A-Za-z0-9._\\-]+(?:\\/[A-Za-z0-9._\\-]+)*\\.[A-Za-z0-9]+)\\b/g;
+
+function companyFileDownloadUrl(rel, company) {
+  return '/api/file?company=' + encodeURIComponent(company || companySlug) +
+    '&path=' + encodeURIComponent(rel) + '&download=1';
+}
+
+function isPreviewableCompanyPath(rel) {
+  return /\\.(md|markdown|csv|tsv|txt|sql|json|jsonl|ya?ml|log|html?|xml)$/i.test(rel);
+}
+
+function appendChatTextWithPaths(host, text) {
+  var s = String(text || '');
+  var re = new RegExp(CHAT_PATH_RE.source, 'g');
+  var last = 0;
+  var m;
+  while ((m = re.exec(s))) {
+    if (m.index > last) host.appendChild(document.createTextNode(s.slice(last, m.index)));
+    (function (rel) {
+      var a = el('a', 'chat-path', rel);
+      a.href = companyFileDownloadUrl(rel);
+      a.title = isPreviewableCompanyPath(rel)
+        ? 'Open preview · Shift/Ctrl-click to download'
+        : 'Download file';
+      a.onclick = function (ev) {
+        if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || !isPreviewableCompanyPath(rel)) {
+          return; // follow href → download
+        }
+        ev.preventDefault();
+        if (typeof openCompanyFileModal === 'function') {
+          openCompanyFileModal(rel, { eyebrow: 'Company file', accent: '#60a5fa' });
+        } else {
+          window.location.href = companyFileDownloadUrl(rel);
+        }
+      };
+      host.appendChild(a);
+    })(m[1]);
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) host.appendChild(document.createTextNode(s.slice(last)));
 }
 
 function appendChiefStreamMessage(log) {
@@ -408,7 +451,9 @@ function setChatMessageContent(msgEl, content) {
   if (!msgEl) return;
   msgEl.className = 'setup-chat-msg setup-chat-msg-assistant';
   msgEl.innerHTML = '';
-  msgEl.appendChild(el('div', 'setup-chat-msg-body', content));
+  var body = el('div', 'setup-chat-msg-body');
+  fillChatMessageBody(body, content, null);
+  msgEl.appendChild(body);
   var log = msgEl.parentElement;
   if (log) log.scrollTop = log.scrollHeight;
 }

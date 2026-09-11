@@ -22,6 +22,18 @@ export const handleRunRoutes: RouteHandler = async ({ root, req, res, url }) => 
       json(res, { error: "not found" }, 404);
       return true;
     }
+    if (url.searchParams.get("download") === "1") {
+      const name = path.basename(full);
+      const buf = fs.readFileSync(full);
+      res.writeHead(200, {
+        "content-type": "application/octet-stream",
+        "content-disposition": `attachment; filename="${name}"`,
+        "content-length": buf.length,
+        "cache-control": "no-store",
+      });
+      res.end(buf);
+      return true;
+    }
     json(res, { path: rel, content: fs.readFileSync(full, "utf8").slice(0, 100_000) });
     return true;
   }
