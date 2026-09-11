@@ -451,6 +451,7 @@ function refresh(opts) {
       renderTasks(s.tasks);
       renderOrg(s.agents);
       if (selectedTab !== 'chat' || chatJustLoaded || opts.paintChat) renderAgentPanel();
+      else if (selectedTab === 'chat') ensureChatPathsLinked();
       renderBudget(s.spent.tokens, s.meta.budget.tokens);
       renderLiveStrip();
       noteDataSig(s.dataSig);

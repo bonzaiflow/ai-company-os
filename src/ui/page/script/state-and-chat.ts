@@ -343,8 +343,13 @@ function fillChatMessageBody(body, content, created) {
   appendChatCreatedTasks(body, created);
 }
 
-/** Company-relative file paths agents mention (data/exports/…, agents/…, …). */
-var CHAT_PATH_RE = /\\b((?:data|agents|tasks|skills)\\/[A-Za-z0-9._\\-]+(?:\\/[A-Za-z0-9._\\-]+)*\\.[A-Za-z0-9]+)\\b/g;
+/** Match company file paths; optional surrounding ** is consumed so links stay clean. */
+function chatPathRegex() {
+  return new RegExp(
+    '(?:\\*\\*)?((?:data|agents|tasks|skills)/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*\\.[A-Za-z0-9]+)(?:\\*\\*)?',
+    'g'
+  );
+}
 
 function companyFileDownloadUrl(rel, company) {
   return '/api/file?company=' + encodeURIComponent(company || companySlug) +
@@ -355,35 +360,62 @@ function isPreviewableCompanyPath(rel) {
   return /\\.(md|markdown|csv|tsv|txt|sql|json|jsonl|ya?ml|log|html?|xml)$/i.test(rel);
 }
 
+function makeChatPathLink(rel) {
+  var a = el('a', 'chat-path', rel);
+  a.href = companyFileDownloadUrl(rel);
+  a.title = isPreviewableCompanyPath(rel)
+    ? 'Open preview · Shift/Ctrl-click to download'
+    : 'Download file';
+  a.onclick = function (ev) {
+    if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || !isPreviewableCompanyPath(rel)) {
+      return;
+    }
+    ev.preventDefault();
+    if (typeof openCompanyFileModal === 'function') {
+      openCompanyFileModal(rel, { eyebrow: 'Company file', accent: '#60a5fa' });
+    } else {
+      window.location.href = companyFileDownloadUrl(rel);
+    }
+  };
+  return a;
+}
+
 function appendChatTextWithPaths(host, text) {
   var s = String(text || '');
-  var re = new RegExp(CHAT_PATH_RE.source, 'g');
+  var re = chatPathRegex();
   var last = 0;
   var m;
   while ((m = re.exec(s))) {
     if (m.index > last) host.appendChild(document.createTextNode(s.slice(last, m.index)));
-    (function (rel) {
-      var a = el('a', 'chat-path', rel);
-      a.href = companyFileDownloadUrl(rel);
-      a.title = isPreviewableCompanyPath(rel)
-        ? 'Open preview · Shift/Ctrl-click to download'
-        : 'Download file';
-      a.onclick = function (ev) {
-        if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || !isPreviewableCompanyPath(rel)) {
-          return; // follow href → download
-        }
-        ev.preventDefault();
-        if (typeof openCompanyFileModal === 'function') {
-          openCompanyFileModal(rel, { eyebrow: 'Company file', accent: '#60a5fa' });
-        } else {
-          window.location.href = companyFileDownloadUrl(rel);
-        }
-      };
-      host.appendChild(a);
-    })(m[1]);
+    host.appendChild(makeChatPathLink(m[1]));
     last = m.index + m[0].length;
   }
   if (last < s.length) host.appendChild(document.createTextNode(s.slice(last)));
+}
+
+/** Upgrade already-mounted chat bubbles (poll refresh skips full chat re-render). */
+function ensureChatPathsLinked() {
+  var log = document.getElementById('chiefChatLog');
+  if (!log || !companySlug) return;
+  var bodies = log.querySelectorAll('.setup-chat-msg-body');
+  for (var i = 0; i < bodies.length; i++) {
+    var body = bodies[i];
+    if (body.querySelector('a.chat-path')) continue;
+    if (body.querySelector('.setup-chat-thinking-row, .setup-chat-stream-body, .setup-chat-stream-caret')) continue;
+    var details = body.querySelector('details.setup-chat-reasoning');
+    var created = body.querySelector('.setup-chat-created');
+    var text = '';
+    for (var n = body.firstChild; n; n = n.nextSibling) {
+      if (n === details || n === created) continue;
+      if (n.nodeType === 3) text += n.nodeValue;
+      else if (n.nodeType === 1) text += n.textContent || '';
+    }
+    if (!text || !/(?:data|agents|tasks|skills)\\//.test(text)) continue;
+    while (body.firstChild) body.removeChild(body.firstChild);
+    if (details) body.appendChild(details);
+    appendChatTextWithPaths(body, text);
+    if (created) body.appendChild(created);
+  }
 }
 
 function appendChiefStreamMessage(log) {
