@@ -410,7 +410,8 @@ function ensureChatPathsLinked() {
       if (n.nodeType === 3) text += n.nodeValue;
       else if (n.nodeType === 1) text += n.textContent || '';
     }
-    if (!text || !/(?:data|agents|tasks|skills)\\//.test(text)) continue;
+    if (!text || text.indexOf('data/') < 0 && text.indexOf('agents/') < 0 &&
+        text.indexOf('tasks/') < 0 && text.indexOf('skills/') < 0) continue;
     while (body.firstChild) body.removeChild(body.firstChild);
     if (details) body.appendChild(details);
     appendChatTextWithPaths(body, text);

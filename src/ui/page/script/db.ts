@@ -441,20 +441,31 @@ function refresh(opts) {
       state = s;
       document.getElementById('coName').textContent = s.meta.name;
       document.getElementById('coGoal').textContent = s.meta.goal;
-      // hydrate chief chat once from disk (plans already persist via /api/plan)
+      // hydrate chief chat from disk; keep in sync when not mid-stream
       var chatJustLoaded = false;
-      if (!chatLoaded[companySlug] && !chiefSending) {
-        chatHistories[companySlug] = Array.isArray(s.chat) ? s.chat : [];
-        chatLoaded[companySlug] = true;
-        chatJustLoaded = true;
+      if (!chiefSending && Array.isArray(s.chat)) {
+        var incoming = s.chat;
+        var prev = chatHistories[companySlug];
+        if (!chatLoaded[companySlug]) {
+          chatHistories[companySlug] = incoming;
+          chatLoaded[companySlug] = true;
+          chatJustLoaded = true;
+        } else if (
+          !prev ||
+          prev.length !== incoming.length ||
+          (incoming.length && prev.length &&
+            (prev[prev.length - 1].content !== incoming[incoming.length - 1].content ||
+             prev[prev.length - 1].role !== incoming[incoming.length - 1].role))
+        ) {
+          // Server transcript moved (e.g. after stream saved) — take disk as source of truth
+          chatHistories[companySlug] = incoming;
+          chatJustLoaded = true;
+        }
       }
       renderTasks(s.tasks);
       renderOrg(s.agents);
-      // Always re-paint the agent panel unless a chief reply is streaming
-      // (chat path linkify + task cards need a fresh DOM).
-      if (!chiefSending || chatJustLoaded || opts.paintChat || selectedTab !== 'chat') {
-        renderAgentPanel();
-      }
+      if (selectedTab !== 'chat' || chatJustLoaded || opts.paintChat) renderAgentPanel();
+      else if (selectedTab === 'chat') ensureChatPathsLinked();
       renderBudget(s.spent.tokens, s.meta.budget.tokens);
       renderLiveStrip();
       noteDataSig(s.dataSig);

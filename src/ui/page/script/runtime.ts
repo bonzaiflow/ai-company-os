@@ -409,83 +409,93 @@ function planningChatDisplayContent(m) {
 
 function renderChiefChat(body) {
   var chief = chiefOf();
+  var chiefName = chief && chief.name ? chief.name : 'Chief';
   var prevLog = document.getElementById('chiefChatLog');
   var prevScroll = prevLog ? prevLog.scrollTop : null;
   var prevInput = document.getElementById('chiefInput');
   var prevVal = prevInput ? prevInput.value : '';
-  var prevFocused = prevInput && document.activeElement === prevInput;
+  var prevFocused = !!(prevInput && document.activeElement === prevInput);
 
-  body.innerHTML = '';
-  body.className = 'side-inner agent-body chat-mode';
-  body.style.display = 'flex';
-  body.style.flexDirection = 'column';
-  body.style.overflowY = 'hidden';
+  try {
+    body.innerHTML = '';
+    body.className = 'side-inner agent-body chat-mode';
+    body.style.display = 'flex';
+    body.style.flexDirection = 'column';
+    body.style.overflowY = 'hidden';
 
-  var box = el('div', 'chatbox');
-  var log = el('div', 'setup-chat-sidebar-log');
-  log.id = 'chiefChatLog';
+    var box = el('div', 'chatbox');
+    var log = el('div', 'setup-chat-sidebar-log');
+    log.id = 'chiefChatLog';
 
-  var planning = (state && Array.isArray(state.planningChat)) ? state.planningChat : [];
-  if (planning.length) {
-    var archive = el('div', 'setup-chat-archive');
-    archive.appendChild(el('p', 'setup-chat-archive-label', 'Planning'));
-    planning.forEach(function (m) {
+    var planning = (state && Array.isArray(state.planningChat)) ? state.planningChat : [];
+    if (planning.length) {
+      var archive = el('div', 'setup-chat-archive');
+      archive.appendChild(el('p', 'setup-chat-archive-label', 'Planning'));
+      planning.forEach(function (m) {
+        appendSetupChatMessage(
+          archive,
+          m.role === 'user' ? 'user' : 'assistant',
+          planningChatDisplayContent(m),
+          m.reasoning
+        );
+      });
+      log.appendChild(archive);
+    }
+
+    var hist = chatHistories[companySlug] || [];
+    if (!hist.length) {
+      log.appendChild(el('p', 'setup-chat-status',
+        'Talk to ' + chiefName + ' \\u2014 ask about progress or hand over new work. New tasks land in the queue; run them with "ai-company-os run".'));
+    }
+    hist.forEach(function (m) {
+      if (!m) return;
       appendSetupChatMessage(
-        archive,
+        log,
         m.role === 'user' ? 'user' : 'assistant',
-        planningChatDisplayContent(m),
-        m.reasoning
+        m.content,
+        m.reasoning,
+        m.role === 'assistant' ? createdFromMessage(m) : null
       );
     });
-    log.appendChild(archive);
-  }
+    if (chiefSending) {
+      appendChiefStreamMessage(log);
+    }
 
-  var hist = chatHistories[companySlug] || [];
-  if (!hist.length) {
-    log.appendChild(el('p', 'setup-chat-status', 'Talk to ' + chief.name + ' \\u2014 ask about progress or hand over new work. New tasks land in the queue; run them with "ai-company-os run".'));
-  }
-  hist.forEach(function (m) {
-    appendSetupChatMessage(
-      log,
-      m.role === 'user' ? 'user' : 'assistant',
-      m.content,
-      m.reasoning,
-      m.role === 'assistant' ? createdFromMessage(m) : null
-    );
-  });
-  if (chiefSending) {
-    appendChiefStreamMessage(log);
-  }
+    var anchor = el('div');
+    anchor.id = 'chiefChatEnd';
+    log.appendChild(anchor);
+    box.appendChild(log);
 
-  var anchor = el('div');
-  anchor.id = 'chiefChatEnd';
-  log.appendChild(anchor);
-  box.appendChild(log);
+    var composer = buildChatComposer({
+      textareaId: 'chiefInput',
+      sendId: 'chiefSend',
+      hintId: 'chiefChatHint',
+      attachChipsId: 'chiefAttachChips',
+      placeholder: 'Message ' + chiefName + '\\u2026',
+      sending: chiefSending,
+      thinkingLabel: (chiefStream && chiefStream.status) || 'Working\\u2026',
+      onSend: sendChiefMsg,
+      onAttach: uploadToChief,
+      hasPendingAttachments: function () { return chiefPendingAttachments.length > 0; },
+      renderAttachments: renderChiefAttachChips
+    });
+    box.appendChild(composer.dock);
+    body.appendChild(box);
 
-  var composer = buildChatComposer({
-    textareaId: 'chiefInput',
-    sendId: 'chiefSend',
-    hintId: 'chiefChatHint',
-    attachChipsId: 'chiefAttachChips',
-    placeholder: 'Message ' + chief.name + '\\u2026',
-    sending: chiefSending,
-    thinkingLabel: (chiefStream && chiefStream.status) || 'Working\\u2026',
-    onSend: sendChiefMsg,
-    onAttach: uploadToChief,
-    hasPendingAttachments: function () { return chiefPendingAttachments.length > 0; },
-    renderAttachments: renderChiefAttachChips
-  });
-  box.appendChild(composer.dock);
-  body.appendChild(box);
-
-  var ta = document.getElementById('chiefInput');
-  if (ta && prevVal) {
-    ta.value = prevVal;
-    if (typeof resizeChatTextarea === 'function') resizeChatTextarea(ta);
-    if (prevFocused) ta.focus();
+    var ta = document.getElementById('chiefInput');
+    if (ta && prevVal) {
+      ta.value = prevVal;
+      if (typeof resizeChatTextarea === 'function') resizeChatTextarea(ta);
+      if (prevFocused) ta.focus();
+    }
+    if (prevScroll != null) log.scrollTop = prevScroll;
+    else anchor.scrollIntoView({ behavior: 'auto' });
+  } catch (err) {
+    body.innerHTML = '';
+    body.className = 'side-inner agent-body chat-mode';
+    body.appendChild(el('div', 'muted', 'Chat failed to render: ' + (err && err.message ? err.message : String(err))));
+    console.error('renderChiefChat', err);
   }
-  if (prevScroll != null) log.scrollTop = prevScroll;
-  else anchor.scrollIntoView({ behavior: 'smooth' });
 }
 
 function finishChiefStream(hist, reply, reasoning, created) {
