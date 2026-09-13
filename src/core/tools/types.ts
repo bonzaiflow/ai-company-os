@@ -21,8 +21,12 @@ export interface Tool {
 /** Resolve a user/model supplied path inside the company dir, or throw.
  * Agents may only touch files within their company. */
 export function safePath(companyDir: string, p: string): string {
-  const resolved = path.resolve(companyDir, String(p ?? ""));
-  if (resolved !== companyDir && !resolved.startsWith(companyDir + path.sep)) {
+  // Always compare absolute paths — Company.dir is sometimes relative
+  // ("companies/foo"); path.resolve then produces an absolute child that
+  // does not start with the relative prefix and falsely trips "escapes".
+  const root = path.resolve(companyDir);
+  const resolved = path.resolve(root, String(p ?? ""));
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
     throw new Error(`path escapes company directory: ${p}`);
   }
   return resolved;
