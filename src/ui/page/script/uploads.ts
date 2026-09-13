@@ -72,10 +72,9 @@ function renderPlanAttachChips() {
 
 function syncChiefComposerReady() {
   var ta = document.getElementById('chiefInput');
-  var btn = document.getElementById('chiefSend');
-  if (!ta || !btn) return;
-  var can = (ta.value.trim().length > 0 || chiefPendingAttachments.length > 0) && !chiefSending && !ta.disabled;
-  syncChatSendBtn(btn, can, chiefSending);
+  if (!ta) return;
+  ta.disabled = !!chiefSending;
+  refreshComposerAction('chief');
 }
 
 function uploadToChief(file) {

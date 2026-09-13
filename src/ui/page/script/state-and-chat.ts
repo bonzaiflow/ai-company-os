@@ -2,6 +2,9 @@
 export const STATE_AND_CHAT = `var view = 'home';
 var companySlug = null;
 var lastDataSigByCompany = {};
+var lastDataListByCompany = {};
+var pendingDataRescan = {};
+var freshDataKeysByCompany = {}; // slug -> { 'db': true, 'db::table': true }
 
 var CO_TOOL_ORDER = ['grant', 'data', 'approvals', 'checkins', 'schedule', 'connectors'];
 var CO_TOOL_DEFS = {
@@ -14,6 +17,54 @@ var CO_TOOL_DEFS = {
 };
 var CO_PINNED_KEY = 'aiCompanyOsCoPinned';
 var DEFAULT_CO_PINNED = ['grant'];
+var elapsedTickTimer = null;
+
+function formatElapsed(ms) {
+  if (!isFinite(ms) || ms < 0) ms = 0;
+  var s = Math.floor(ms / 1000);
+  var h = Math.floor(s / 3600);
+  var m = Math.floor((s % 3600) / 60);
+  var sec = s % 60;
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+  return m + ':' + String(sec).padStart(2, '0');
+}
+
+function taskElapsedMs(t) {
+  if (!t) return 0;
+  var iso = t.startedAt || (t.status === 'running' ? t.updatedAt : null);
+  if (!iso) return 0;
+  var start = Date.parse(iso);
+  if (!isFinite(start)) return 0;
+  if (t.status === 'running') return Date.now() - start;
+  var end = Date.parse(t.updatedAt || iso);
+  return (isFinite(end) ? end : Date.now()) - start;
+}
+
+function ensureElapsedTicker() {
+  if (elapsedTickTimer) return;
+  elapsedTickTimer = setInterval(function () {
+    var nodes = document.querySelectorAll('[data-elapsed-since]');
+    if (!nodes.length) return;
+    var now = Date.now();
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      var since = Date.parse(n.getAttribute('data-elapsed-since') || '');
+      if (!isFinite(since)) continue;
+      n.textContent = formatElapsed(now - since);
+    }
+  }, 1000);
+}
+
+function elapsedBadge(t, cls) {
+  if (!t || (t.status !== 'running' && !t.startedAt)) return null;
+  var iso = t.startedAt || t.updatedAt;
+  if (!iso) return null;
+  ensureElapsedTicker();
+  var span = el('span', cls || 'task-elapsed', formatElapsed(taskElapsedMs(t)));
+  if (t.status === 'running') span.setAttribute('data-elapsed-since', iso);
+  span.title = t.status === 'running' ? 'Running for' : 'Ran for';
+  return span;
+}
 
 function loadCoPinned() {
   var raw = null;
@@ -131,11 +182,82 @@ document.addEventListener('click', function (e) {
   toggle.setAttribute('aria-expanded', 'false');
 });
 
+function seedDataListBaseline(slug) {
+  if (!slug || lastDataListByCompany[slug]) return;
+  fetch('/api/db/list?company=' + encodeURIComponent(slug))
+    .then(function (r) { return r.json(); })
+    .then(function (list) {
+      if (!Array.isArray(list)) return;
+      if (!lastDataListByCompany[slug]) lastDataListByCompany[slug] = list;
+    })
+    .catch(function () {});
+}
+
 function noteDataSig(sig) {
   if (sig == null || !companySlug) return;
   var prev = lastDataSigByCompany[companySlug];
-  if (prev != null && prev !== '' && sig !== prev) markDataFresh(true);
+  if (prev != null && prev !== '' && sig !== prev) {
+    markDataFresh(true);
+    pendingDataRescan[companySlug] = true;
+  }
   lastDataSigByCompany[companySlug] = sig;
+  if (prev == null || prev === '') seedDataListBaseline(companySlug);
+}
+
+function freshDataKey(db, table) {
+  return table ? (db + '::' + table) : db;
+}
+
+function isDataFreshKey(db, table) {
+  var map = freshDataKeysByCompany[companySlug];
+  if (!map) return false;
+  if (table) return !!map[freshDataKey(db, table)];
+  if (map[db]) return true;
+  var prefix = db + '::';
+  return Object.keys(map).some(function (k) { return k.indexOf(prefix) === 0; });
+}
+
+function clearFreshDataKey(db, table) {
+  var map = freshDataKeysByCompany[companySlug];
+  if (!map) return;
+  if (table) delete map[freshDataKey(db, table)];
+  else {
+    delete map[db];
+    var prefix = db + '::';
+    Object.keys(map).forEach(function (k) {
+      if (k.indexOf(prefix) === 0) delete map[k];
+    });
+  }
+}
+
+function diffDataLists(prev, next) {
+  var fresh = {};
+  var prevByDb = {};
+  (prev || []).forEach(function (d) { prevByDb[d.db] = d; });
+  (next || []).forEach(function (d) {
+    var old = prevByDb[d.db];
+    if (!old) {
+      fresh[d.db] = true;
+      (d.tables || []).forEach(function (t) { fresh[freshDataKey(d.db, t.name)] = true; });
+      return;
+    }
+    var fileChanged = old.bytes !== d.bytes;
+    var oldTables = {};
+    (old.tables || []).forEach(function (t) { oldTables[t.name] = t; });
+    (d.tables || []).forEach(function (t) {
+      var ot = oldTables[t.name];
+      if (!ot || ot.rows !== t.rows || fileChanged) {
+        fresh[freshDataKey(d.db, t.name)] = true;
+        fresh[d.db] = true;
+      }
+    });
+    (old.tables || []).forEach(function (t) {
+      if (!(d.tables || []).some(function (x) { return x.name === t.name; })) {
+        fresh[d.db] = true;
+      }
+    });
+  });
+  return fresh;
 }
 var state = null;
 var selectedAgent = null;
@@ -230,24 +352,224 @@ function chatSpinnerSvg() {
   return svg;
 }
 
+function chatMicIconSvg() {
+  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '15');
+  svg.setAttribute('height', '15');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z');
+  path.setAttribute('fill', 'currentColor');
+  var path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path2.setAttribute('d', 'M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8');
+  path2.setAttribute('stroke', 'currentColor');
+  path2.setAttribute('stroke-width', '2');
+  path2.setAttribute('stroke-linecap', 'round');
+  path2.setAttribute('stroke-linejoin', 'round');
+  path2.setAttribute('fill', 'none');
+  svg.appendChild(path);
+  svg.appendChild(path2);
+  return svg;
+}
+
+/** Live voice capture for chief/plan composers (null when idle). */
+var voiceSession = null; // { kind, recorder, chunks, stream, phase: 'recording'|'transcribing' }
+
 function resizeChatTextarea(ta) {
   if (!ta) return;
   ta.style.height = 'auto';
   ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
 }
 
-function syncChatSendBtn(btn, canSend, sending) {
+/** Composer action button: mic (empty) | send (has text) | spinner (sending/recording).
+ *  Always reads live chiefSending/planSending — never a stale build-time flag. */
+function syncChatActionBtn(btn, opts) {
   if (!btn) return;
-  btn.className = 'setup-chat-send' + (canSend ? ' setup-chat-send-ready' : '');
-  btn.disabled = !canSend;
-  btn.setAttribute('aria-label', sending ? 'Sending' : 'Send message');
+  opts = opts || {};
+  var kind = opts.kind || 'chief';
+  var sending = kind === 'plan' ? planSending : chiefSending;
+  var hasContent = !!opts.hasContent;
+  var voice = voiceSession && voiceSession.kind === kind ? voiceSession : null;
+  var mode = 'mic';
+  if (sending || (voice && voice.phase === 'transcribing')) mode = 'spinner';
+  else if (voice && voice.phase === 'recording') mode = 'recording';
+  else if (hasContent) mode = 'send';
+
+  btn.disabled = mode === 'spinner';
+  btn.dataset.mode = mode;
+  btn.className = 'setup-chat-send'
+    + (mode === 'send' || mode === 'mic' || mode === 'recording' ? ' setup-chat-send-ready' : '')
+    + (mode === 'mic' || mode === 'recording' ? ' setup-chat-send-mic' : '')
+    + (mode === 'recording' ? ' setup-chat-send-recording' : '');
+  if (mode === 'spinner') btn.setAttribute('aria-label', sending ? 'Sending' : 'Transcribing');
+  else if (mode === 'recording') btn.setAttribute('aria-label', 'Stop recording');
+  else if (mode === 'mic') btn.setAttribute('aria-label', 'Dictate with microphone');
+  else btn.setAttribute('aria-label', 'Send message');
   while (btn.firstChild) btn.removeChild(btn.firstChild);
-  btn.appendChild(sending ? chatSpinnerSvg() : chatSendIconSvg());
+  if (mode === 'spinner') btn.appendChild(chatSpinnerSvg());
+  else if (mode === 'mic' || mode === 'recording') btn.appendChild(chatMicIconSvg());
+  else btn.appendChild(chatSendIconSvg());
+  return mode;
+}
+
+/** @deprecated use syncChatActionBtn — kept for call sites during transition */
+function syncChatSendBtn(btn, canSend, sending) {
+  var kind = (btn && btn.id === 'planSend') ? 'plan' : 'chief';
+  syncChatActionBtn(btn, { kind: kind, hasContent: !!canSend && !sending });
 }
 
 function syncChatComposerHint(hintEl, sending, thinkingLabel) {
   if (!hintEl) return;
-  hintEl.textContent = sending ? (thinkingLabel || 'Working\\u2026') : 'Enter to send \\u00b7 Shift+Enter for newline';
+  if (voiceSession && voiceSession.phase === 'recording') {
+    hintEl.textContent = 'Recording\\u2026 tap mic to stop';
+    return;
+  }
+  if (voiceSession && voiceSession.phase === 'transcribing') {
+    hintEl.textContent = 'Transcribing\\u2026';
+    return;
+  }
+  hintEl.textContent = sending ? (thinkingLabel || 'Working\\u2026') : 'Enter to send \\u00b7 Shift+Enter for newline \\u00b7 mic when empty';
+}
+
+function composerHasContent(kind) {
+  if (kind === 'plan') {
+    var pta = document.getElementById('planInput');
+    return !!(pta && pta.value.trim()) || (typeof planPendingAttachments !== 'undefined' && planPendingAttachments.length > 0);
+  }
+  var cta = document.getElementById('chiefInput');
+  return !!(cta && cta.value.trim()) || (typeof chiefPendingAttachments !== 'undefined' && chiefPendingAttachments.length > 0);
+}
+
+function refreshComposerAction(kind) {
+  var btn = document.getElementById(kind === 'plan' ? 'planSend' : 'chiefSend');
+  var hint = document.getElementById(kind === 'plan' ? 'planChatHint' : 'chiefChatHint');
+  var sending = kind === 'plan' ? planSending : chiefSending;
+  var mode = syncChatActionBtn(btn, { kind: kind, hasContent: composerHasContent(kind) });
+  if (kind === 'plan') {
+    if (sending) syncChatComposerHint(hint, true, getPlanThinkingLabel());
+    else if (voiceSession && voiceSession.kind === 'plan') syncChatComposerHint(hint, false);
+    else if (hint && !sending) hint.textContent = 'Enter to send \\u00b7 drop plan sections for context \\u00b7 mic when empty';
+  } else {
+    syncChatComposerHint(hint, sending, (chiefStream && chiefStream.status) || 'Working\\u2026');
+  }
+  return mode;
+}
+
+function blobToBase64(blob) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var s = String(reader.result || '');
+      var i = s.indexOf(',');
+      resolve(i >= 0 ? s.slice(i + 1) : s);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function stopVoiceTracks(stream) {
+  if (!stream) return;
+  stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+}
+
+function cancelVoiceSession() {
+  if (!voiceSession) return;
+  var s = voiceSession;
+  voiceSession = null;
+  try { if (s.recorder && s.recorder.state !== 'inactive') s.recorder.stop(); } catch (e) {}
+  stopVoiceTracks(s.stream);
+  refreshComposerAction(s.kind);
+}
+
+function finishVoiceAndTranscribe(kind, blob, mime) {
+  voiceSession = { kind: kind, phase: 'transcribing' };
+  refreshComposerAction(kind);
+  blobToBase64(blob).then(function (b64) {
+    return fetch('/api/transcribe', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        audioBase64: b64,
+        mimeType: mime || blob.type || 'audio/webm',
+        filename: 'dictate.' + ((mime || blob.type || '').indexOf('mp4') >= 0 ? 'mp4' : 'webm')
+      })
+    }).then(function (r) { return r.json(); });
+  }).then(function (d) {
+    voiceSession = null;
+    if (d && d.error) {
+      showToast(d.error, 'err');
+      refreshComposerAction(kind);
+      return;
+    }
+    var text = (d && d.text ? String(d.text) : '').trim();
+    var ta = document.getElementById(kind === 'plan' ? 'planInput' : 'chiefInput');
+    if (ta && text) {
+      ta.value = ta.value ? (ta.value.replace(/\\s+$/, '') + ' ' + text) : text;
+      resizeChatTextarea(ta);
+      ta.focus();
+    } else if (!text) {
+      showToast('No speech detected', 'err');
+    }
+    refreshComposerAction(kind);
+  }).catch(function (e) {
+    voiceSession = null;
+    showToast('Transcription failed: ' + e, 'err');
+    refreshComposerAction(kind);
+  });
+}
+
+function toggleVoiceDictate(kind) {
+  if ((kind === 'plan' ? planSending : chiefSending)) return;
+  if (voiceSession && voiceSession.kind === kind && voiceSession.phase === 'recording') {
+    var rec = voiceSession.recorder;
+    try { rec.stop(); } catch (e) {}
+    return;
+  }
+  if (voiceSession) cancelVoiceSession();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast('Microphone not available in this browser', 'err');
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+    var mime = '';
+    if (typeof MediaRecorder !== 'undefined') {
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mime = 'audio/webm;codecs=opus';
+      else if (MediaRecorder.isTypeSupported('audio/webm')) mime = 'audio/webm';
+      else if (MediaRecorder.isTypeSupported('audio/mp4')) mime = 'audio/mp4';
+    }
+    var recorder;
+    try {
+      recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    } catch (e) {
+      stopVoiceTracks(stream);
+      showToast('Could not start recorder', 'err');
+      return;
+    }
+    var chunks = [];
+    recorder.ondataavailable = function (ev) {
+      if (ev.data && ev.data.size) chunks.push(ev.data);
+    };
+    recorder.onstop = function () {
+      stopVoiceTracks(stream);
+      var type = recorder.mimeType || mime || 'audio/webm';
+      var blob = new Blob(chunks, { type: type });
+      if (!blob.size) {
+        voiceSession = null;
+        showToast('Empty recording', 'err');
+        refreshComposerAction(kind);
+        return;
+      }
+      finishVoiceAndTranscribe(kind, blob, type);
+    };
+    voiceSession = { kind: kind, recorder: recorder, chunks: chunks, stream: stream, phase: 'recording' };
+    recorder.start();
+    refreshComposerAction(kind);
+  }).catch(function () {
+    showToast('Microphone permission denied', 'err');
+  });
 }
 
 function buildChatThinkingDots() {
@@ -343,12 +665,11 @@ function fillChatMessageBody(body, content, created) {
   appendChatCreatedTasks(body, created);
 }
 
-/** Match company file paths; optional surrounding ** is consumed so links stay clean. */
+/** Match company file paths; optional surrounding markdown bold is consumed so links stay clean.
+ *  Use a regex literal — new RegExp(string) loses star escapes once this block is embedded
+ *  in the page script template (becomes Nothing to repeat). */
 function chatPathRegex() {
-  return new RegExp(
-    '(?:\\*\\*)?((?:data|agents|tasks|skills)/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*\\.[A-Za-z0-9]+)(?:\\*\\*)?',
-    'g'
-  );
+  return /(?:\\*\\*)?((?:data|agents|tasks|skills)\\/[A-Za-z0-9._-]+(?:\\/[A-Za-z0-9._-]+)*\\.[A-Za-z0-9]+)(?:\\*\\*)?/g;
 }
 
 function companyFileDownloadUrl(rel, company) {
@@ -518,9 +839,15 @@ function stopPlanPhaseTimer() {
 }
 
 function buildChatComposer(opts) {
+  var kind = opts.kind || (opts.sendId === 'planSend' ? 'plan' : 'chief');
   var dock = el('div', 'setup-chat-dock');
   var form = el('form', 'setup-chat-composer');
-  form.onsubmit = function (e) { e.preventDefault(); opts.onSend(); };
+  form.onsubmit = function (e) {
+    e.preventDefault();
+    var mode = refreshComposerAction(kind);
+    if (mode === 'mic' || mode === 'recording') toggleVoiceDictate(kind);
+    else if (mode === 'send') opts.onSend();
+  };
 
   var chips = el('div', 'chat-attach-chips');
   chips.id = opts.attachChipsId || '';
@@ -532,18 +859,20 @@ function buildChatComposer(opts) {
   ta.placeholder = opts.placeholder;
   ta.rows = 1;
   ta.setAttribute('aria-label', 'Message');
-  ta.disabled = !!opts.sending;
+  ta.disabled = !!(kind === 'plan' ? planSending : chiefSending);
   function refreshSend() {
-    var hasText = ta.value.trim().length > 0;
-    var hasAttach = opts.hasPendingAttachments ? !!opts.hasPendingAttachments() : false;
-    syncChatSendBtn(opts.sendBtnRef, (hasText || hasAttach) && !opts.sending && !ta.disabled, opts.sending);
+    refreshComposerAction(kind);
   }
   ta.oninput = function () {
     resizeChatTextarea(ta);
     refreshSend();
   };
   ta.onkeydown = function (e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); opts.onSend(); }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      var mode = refreshComposerAction(kind);
+      if (mode === 'send') opts.onSend();
+    }
   };
 
   var bar = el('div', 'setup-chat-composer-bar');
@@ -583,7 +912,7 @@ function buildChatComposer(opts) {
   dock.appendChild(form);
 
   refreshSend();
-  syncChatComposerHint(hint, !!opts.sending, opts.thinkingLabel);
+  syncChatComposerHint(hint, !!(kind === 'plan' ? planSending : chiefSending), opts.thinkingLabel);
   resizeChatTextarea(ta);
   if (opts.renderAttachments) opts.renderAttachments();
 
@@ -596,10 +925,7 @@ function syncPlanComposer() {
   var hint = document.getElementById('planChatHint');
   if (!ta || !btn || !hint) return;
   ta.disabled = planSending;
-  var can = (ta.value.trim().length > 0 || planPendingAttachments.length > 0) && !planSending;
-  syncChatSendBtn(btn, can, planSending);
-  if (planSending) syncChatComposerHint(hint, true, getPlanThinkingLabel());
-  else hint.textContent = 'Enter to send \\u00b7 drop plan sections for context';
+  refreshComposerAction('plan');
 }
 
 function insertPlanContext(text) {
@@ -713,8 +1039,20 @@ function initPlanChatComposer() {
   btn.dataset.ready = '1';
   ta.oninput = function () { resizeChatTextarea(ta); syncPlanComposer(); };
   ta.onkeydown = function (e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPlanMsg(); }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      var mode = refreshComposerAction('plan');
+      if (mode === 'send') sendPlanMsg();
+    }
   };
+  if (form) {
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      var mode = refreshComposerAction('plan');
+      if (mode === 'mic' || mode === 'recording') toggleVoiceDictate('plan');
+      else if (mode === 'send') sendPlanMsg();
+    };
+  }
   bindPlanChatDrop(form);
   syncPlanComposer();
 }

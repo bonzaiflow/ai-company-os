@@ -60,6 +60,12 @@ export const SHARED = `.accentbar { height: 3px; background: linear-gradient(90d
 #viewCompany section:not(.sidebar) .task, .agent-body .task { background: var(--surface); }
 .task .id { font-family: "JetBrains Mono", monospace; font-size: 0.68rem; color: var(--muted); }
 .task .title { margin: 0.25rem 0; font-size: 0.85rem; line-height: 1.35; }
+.task-elapsed, .org-elapsed, .live-elapsed {
+  font-family: "JetBrains Mono", monospace; font-size: 0.62rem; font-variant-numeric: tabular-nums;
+  color: var(--muted); letter-spacing: 0.02em;
+}
+.task-elapsed { color: #93c5fd; }
+.live-elapsed { color: #93c5fd; margin-right: 0.15rem; }
 .task .task-prio-up {
   position: absolute; right: 0.45rem; bottom: 0.35rem;
   opacity: 0; pointer-events: none;
@@ -87,7 +93,21 @@ export const SHARED = `.accentbar { height: 3px; background: linear-gradient(90d
 .pill.failed  { background: rgba(248, 113, 113, 0.15); color: #f87171; }
 .pill.neutral { background: rgba(139, 156, 179, 0.15); color: var(--muted); }
 
-.org { display: flex; flex-direction: column; align-items: center; padding: 0.75rem 0 1.5rem; }
+.org-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  /* Avoid flex-centering the tree in the scrollport — that pushes the left
+     half to negative scrollLeft (unreachable). Size the chart, scroll the port. */
+}
+.org {
+  display: flex; flex-direction: column; align-items: center;
+  width: max-content; min-width: 100%; box-sizing: border-box;
+  padding: 0.75rem 1rem 1.5rem;
+}
 .sub { display: flex; flex-direction: column; align-items: center; position: relative; }
 .down { width: 1px; height: 18px; background: color-mix(in srgb, var(--blue-bright) 35%, var(--border)); margin-top: -4px; }
 .kids { display: flex; justify-content: center; align-items: flex-start; }
@@ -384,10 +404,28 @@ a.chat-path:hover { color: var(--link-strong, #93c5fd); }
 .setup-chat-send-ready:hover:not(:disabled) {
   background: #2563eb; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
 }
+.setup-chat-send-mic {
+  background: color-mix(in srgb, #60a5fa 22%, var(--surface));
+  color: #93c5fd;
+  box-shadow: none;
+}
+.setup-chat-send-mic:hover:not(:disabled) {
+  background: color-mix(in srgb, #60a5fa 35%, var(--surface));
+  color: #fff;
+}
+.setup-chat-send-recording {
+  background: color-mix(in srgb, #f87171 35%, var(--surface));
+  color: #fecaca;
+  animation: setup-chat-mic-pulse 1.1s ease-in-out infinite;
+}
 .setup-chat-send:disabled { opacity: 1; }
 .setup-chat-send svg { display: block; }
 .setup-chat-send-spinner { animation: setup-chat-spin 0.75s linear infinite; }
 @keyframes setup-chat-spin { to { transform: rotate(360deg); } }
+@keyframes setup-chat-mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(248, 113, 113, 0); }
+}
 
 .btn {
   font-size: 0.82rem; padding: 0.45rem 0.95rem; border-radius: 8px;
@@ -422,7 +460,7 @@ a.chat-path:hover { color: var(--link-strong, #93c5fd); }
 .planbar input#planName { flex: 1; min-width: 10rem; }
 .plan-org {
   background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-  padding: 1rem 0.75rem 1.1rem; margin: 0.5rem 0; overflow-x: auto;
+  padding: 1rem 0.75rem 1.1rem; margin: 0;
 }
 .plan-org .org-card { cursor: default; }
 .plan-org .org-card:hover { transform: none; box-shadow: none; border-color: var(--border); }

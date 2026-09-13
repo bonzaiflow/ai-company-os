@@ -1,12 +1,45 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Company } from "../../core/store.js";
+import { transcribeLocal } from "../../core/transcribe.js";
 import { slugify } from "../../util.js";
 import { json, readBody } from "../http.js";
 import type { RouteHandler } from "./types.js";
 
-/** /api/upload and /api/plan/upload — data file intake with parse preview. */
+/** /api/upload, /api/plan/upload, /api/transcribe — data file intake + local Whisper. */
 export const handleUploadRoutes: RouteHandler = async ({ root, req, res, url }) => {
+  if (req.method === "POST" && url.pathname === "/api/transcribe") {
+    const body = await readBody(req);
+    const b64 = String(body.audioBase64 ?? "");
+    if (!b64) {
+      json(res, { error: "missing audioBase64" }, 400);
+      return true;
+    }
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(b64, "base64");
+    } catch {
+      json(res, { error: "invalid base64 audio" }, 400);
+      return true;
+    }
+    if (buf.length > 25_000_000) {
+      json(res, { error: "audio too large (25MB max)" }, 400);
+      return true;
+    }
+    if (buf.length < 64) {
+      json(res, { error: "audio too short" }, 400);
+      return true;
+    }
+    const mime = String(body.mimeType ?? "audio/webm").split(";")[0]!.trim() || "audio/webm";
+    try {
+      const { text, model } = await transcribeLocal({ audio: buf, mimeType: mime });
+      json(res, { text, model });
+    } catch (e) {
+      json(res, { error: e instanceof Error ? e.message : String(e) }, 502);
+    }
+    return true;
+  }
+
   // into a company (chief chat): saved to data/uploads/, parse-previewed
   if (req.method === "POST" && url.pathname === "/api/upload") {
     const body = await readBody(req);

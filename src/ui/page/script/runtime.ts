@@ -190,7 +190,16 @@ function nodeFor(a, opts) {
     (a.skills || []).forEach(function (s) { chips.appendChild(el('span', 'chip skill', s)); });
     body.appendChild(chips);
   }
-  if (!opts.static && liveTools && running[a.name]) body.appendChild(el('div', 'org-task-tag', '\\u25b6 ' + running[a.name]));
+  if (!opts.static && running[a.name]) {
+    var tag = el('div', 'org-task-tag', '\\u25b6 ' + running[a.name]);
+    var rt = state && state.tasks ? state.tasks.find(function (t) { return t.id === running[a.name]; }) : null;
+    var eb = elapsedBadge(rt, 'org-elapsed');
+    if (eb) {
+      tag.appendChild(document.createTextNode(' '));
+      tag.appendChild(eb);
+    }
+    body.appendChild(tag);
+  }
   n.appendChild(body);
   if (!opts.static) n.onclick = function () { selectAgent(a.name); };
   return n;
@@ -467,12 +476,12 @@ function renderChiefChat(body) {
     box.appendChild(log);
 
     var composer = buildChatComposer({
+      kind: 'chief',
       textareaId: 'chiefInput',
       sendId: 'chiefSend',
       hintId: 'chiefChatHint',
       attachChipsId: 'chiefAttachChips',
       placeholder: 'Message ' + chiefName + '\\u2026',
-      sending: chiefSending,
       thinkingLabel: (chiefStream && chiefStream.status) || 'Working\\u2026',
       onSend: sendChiefMsg,
       onAttach: uploadToChief,
@@ -488,6 +497,7 @@ function renderChiefChat(body) {
       if (typeof resizeChatTextarea === 'function') resizeChatTextarea(ta);
       if (prevFocused) ta.focus();
     }
+    refreshComposerAction('chief');
     if (prevScroll != null) log.scrollTop = prevScroll;
     else anchor.scrollIntoView({ behavior: 'auto' });
   } catch (err) {
@@ -520,11 +530,10 @@ function finishChiefStream(hist, reply, reasoning, created) {
     fillChatMessageBody(body, reply, created);
     streamMsg.appendChild(body);
     var ta = document.getElementById('chiefInput');
-    var btn = document.getElementById('chiefSend');
     var hint = document.getElementById('chiefChatHint');
     if (ta) { ta.disabled = false; resizeChatTextarea(ta); }
-    if (btn) syncChatSendBtn(btn, false, false);
-    if (hint) syncChatComposerHint(hint, false);
+    refreshComposerAction('chief');
+    if (hint && !chiefSending) syncChatComposerHint(hint, false);
   } else {
     renderAgentPanel();
   }
