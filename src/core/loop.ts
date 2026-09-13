@@ -1,5 +1,11 @@
 import type { AiCompanyOsConfig } from "../types.js";
 import type { Company } from "./store.js";
+import {
+  notifyOwner,
+  queueEmptyNudgeText,
+  replanNudgeText,
+  stallNudgeText,
+} from "./connectors/notify-owner.js";
 import { claimReadyWave, promoteWaitingParents, requeueStuckRunning } from "./queue.js";
 import { storeLockFor, tick } from "./tick.js";
 import type { TickOptions, TickResult } from "./tick-types.js";
@@ -97,6 +103,7 @@ export async function runLoop(
           const created = await chiefReplan(co, cfg);
           if (created.length) {
             opts.log?.(`  ⇒ replan created ${created.map((t) => t.id).join(", ")}`);
+            void notifyOwner(co, "replan", replanNudgeText(co, created.map((t) => t.id)));
             continue; // keep working the new tasks
           }
         } catch (e) {
@@ -108,11 +115,13 @@ export async function runLoop(
         if (after - before < MIN_CYCLE_PROGRESS) {
           stalls++;
           if (stalls >= 2) {
+            const stopped = `goal not reachable — 2 replan cycles added <${MIN_CYCLE_PROGRESS} rows (best: ${unmet
+              .map((x) => `${x.t.label} ${co.measure(x.t)}/${x.t.count}`)
+              .join(", ")}). Sources appear exhausted; owner input needed.`;
+            void notifyOwner(co, "stall", stallNudgeText(co, stopped));
             return {
               ticks: i,
-              stopped: `goal not reachable — 2 replan cycles added <${MIN_CYCLE_PROGRESS} rows (best: ${unmet
-                .map((x) => `${x.t.label} ${co.measure(x.t)}/${x.t.count}`)
-                .join(", ")}). Sources appear exhausted; owner input needed.`,
+              stopped,
             };
           }
         } else {
@@ -120,7 +129,9 @@ export async function runLoop(
         }
         continue;
       }
-      return { ticks: i, stopped: r.detail ?? "queue empty" };
+      const emptyDetail = r.detail ?? "queue empty";
+      void notifyOwner(co, "queue_empty", queueEmptyNudgeText(co));
+      return { ticks: i, stopped: emptyDetail };
     }
   }
   return { ticks: maxTicks, stopped: `max ticks (${maxTicks}) — still working, run again to continue` };
