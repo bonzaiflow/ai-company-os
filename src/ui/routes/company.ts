@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { companyDataSig, listAgentFiles } from "../../core/agent-files.js";
+import { companyDataParts, companyDataSig, listAgentFiles } from "../../core/agent-files.js";
 import { loadConfig } from "../../config.js";
 import { chiefChatStream } from "../../core/chat.js";
 import { listCheckins } from "../../core/checkin.js";
@@ -73,6 +73,7 @@ export const handleCompanyRoutes: RouteHandler = async ({ root, req, res, url })
       chat: co.chatHistory(),
       planningChat: co.planningChatHistory(),
       dataSig: companyDataSig(co),
+      dataParts: companyDataParts(co),
     });
     return true;
   }

@@ -26,18 +26,25 @@ export function listAgentFiles(co: Company, agent: string): { path: string; size
 
 /** Cheap fingerprint of on-disk company data (sqlite + wal/shm) so the UI
  * can pulse the Data button when something new lands. */
-export function companyDataSig(co: Company): string {
+export function companyDataParts(co: Company): Record<string, string> {
   const dir = path.join(co.dir, "data");
-  if (!fs.existsSync(dir)) return "";
-  const parts: string[] = [];
+  const out: Record<string, string> = {};
+  if (!fs.existsSync(dir)) return out;
   for (const f of fs.readdirSync(dir).sort()) {
     if (!/\.(db|sqlite|sqlite3)(-wal|-shm)?$/i.test(f)) continue;
     try {
       const st = fs.statSync(path.join(dir, f));
-      parts.push(`${f}:${st.size}:${Math.floor(st.mtimeMs)}`);
+      out[f] = `${st.size}:${Math.floor(st.mtimeMs)}`;
     } catch {
       /* ignore transient files */
     }
   }
-  return parts.join("|");
+  return out;
+}
+
+export function companyDataSig(co: Company): string {
+  const parts = companyDataParts(co);
+  return Object.entries(parts)
+    .map(([f, v]) => `${f}:${v}`)
+    .join("|");
 }

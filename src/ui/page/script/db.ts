@@ -74,7 +74,18 @@ function openDbBrowser() {
   dbState.back = null;
   fetch('/api/db/list?company=' + encodeURIComponent(companySlug))
     .then(function (r) { return r.json(); })
-    .then(function (list) { dbState.list = list; renderDb(); });
+    .then(function (list) {
+      if (pendingDataRescan[companySlug]) {
+        var prevList = lastDataListByCompany[companySlug];
+        freshDataKeysByCompany[companySlug] = prevList
+          ? diffDataLists(prevList, list)
+          : {};
+        pendingDataRescan[companySlug] = false;
+      }
+      lastDataListByCompany[companySlug] = list;
+      dbState.list = list;
+      renderDb();
+    });
 }
 
 function renderDb() {
@@ -96,21 +107,36 @@ function renderDbOverview(body) {
     body.appendChild(el('div', 'muted', 'No SQLite databases in data/ yet. Agents create them with the sqlite/discover tools.'));
     return;
   }
+  var freshMap = freshDataKeysByCompany[companySlug] || {};
+  var anyFresh = Object.keys(freshMap).length > 0;
+  if (anyFresh) {
+    body.appendChild(el('div', 'db-fresh-banner', 'Highlighted files/tables changed since your last look.'));
+  }
   dbState.list.forEach(function (d) {
-    var file = el('div', 'db-file');
+    var fileFresh = isDataFreshKey(d.db);
+    var file = el('div', 'db-file' + (fileFresh ? ' db-fresh' : ''));
     var head = el('div', 'db-file-head');
-    head.appendChild(el('span', 'db-file-name', '\\ud83d\\uddc4 ' + d.db));
+    var name = el('span', 'db-file-name', '\\ud83d\\uddc4 ' + d.db);
+    head.appendChild(name);
+    if (fileFresh) head.appendChild(el('span', 'db-fresh-pill', 'updated'));
     head.appendChild(el('span', 'db-file-size', fmtBytes(d.bytes) + ' \\u00b7 ' + d.tables.length + ' table' + (d.tables.length === 1 ? '' : 's')));
     file.appendChild(head);
     if (!d.tables.length) { file.appendChild(el('div', 'muted', '(no tables)')); }
     else {
       var grid = el('div', 'db-tables');
       d.tables.forEach(function (t) {
-        var card = el('div', 'db-tcard');
-        card.appendChild(el('div', 't', t.name));
+        var tableFresh = isDataFreshKey(d.db, t.name);
+        var card = el('div', 'db-tcard' + (tableFresh ? ' db-fresh' : ''));
+        var titleRow = el('div', 'db-tcard-title');
+        titleRow.appendChild(el('div', 't', t.name));
+        if (tableFresh) titleRow.appendChild(el('span', 'db-fresh-pill', 'new'));
+        card.appendChild(titleRow);
         card.appendChild(el('div', 'n', t.rows.toLocaleString() + ' rows \\u00b7 ' + t.columns.length + ' cols'));
         card.appendChild(el('div', 'c', t.columns.join(', ')));
-        card.onclick = function () { openDbTable(d.db, t.name, t.columns); };
+        card.onclick = function () {
+          clearFreshDataKey(d.db, t.name);
+          openDbTable(d.db, t.name, t.columns);
+        };
         grid.appendChild(card);
       });
       file.appendChild(grid);
