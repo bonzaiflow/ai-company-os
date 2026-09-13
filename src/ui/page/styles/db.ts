@@ -4,12 +4,31 @@ export const DB = `/* ── DB browser: overview (level 1) ── */
 .db-crumb a { color: #60a5fa; cursor: pointer; }
 .db-crumb a:hover { text-decoration: underline; }
 .db-file { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 0.9rem; margin-bottom: 0.7rem; }
-.db-file-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
+.db-file.db-fresh {
+  border-color: color-mix(in srgb, #fbbf24 55%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, #fbbf24 20%, transparent);
+}
+.db-file-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
 .db-file-name { font-family: "JetBrains Mono", monospace; font-size: 0.82rem; font-weight: 500; }
 .db-file-size { font-size: 0.68rem; color: var(--muted); font-family: "JetBrains Mono", monospace; }
+.db-fresh-banner {
+  font-size: 0.78rem; color: #fbbf24; margin-bottom: 0.65rem;
+  padding: 0.45rem 0.65rem; border-radius: 8px;
+  background: color-mix(in srgb, #fbbf24 10%, var(--bg));
+  border: 1px solid color-mix(in srgb, #fbbf24 30%, var(--border));
+}
+.db-fresh-pill {
+  font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: #92400e; background: #fbbf24; border-radius: 999px; padding: 0.1rem 0.4rem;
+}
 .db-tables { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0.5rem; }
 .db-tcard { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.7rem; cursor: pointer; transition: border-color 0.15s, transform 0.15s; }
+.db-tcard.db-fresh {
+  border-color: color-mix(in srgb, #fbbf24 60%, var(--border));
+  background: color-mix(in srgb, #fbbf24 8%, var(--surface));
+}
 .db-tcard:hover { border-color: color-mix(in srgb, var(--blue) 50%, var(--border)); transform: translateY(-1px); }
+.db-tcard-title { display: flex; align-items: center; justify-content: space-between; gap: 0.35rem; }
 .db-tcard .t { font-family: "JetBrains Mono", monospace; font-weight: 600; font-size: 0.8rem; }
 .db-tcard .n { font-size: 0.72rem; color: var(--text); font-family: "JetBrains Mono", monospace; }
 .db-tcard .c { font-size: 0.64rem; color: var(--muted); margin-top: 0.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -89,6 +108,20 @@ table.dbt td.null { color: var(--muted); font-style: italic; }
   box-sizing: border-box;
 }
 .dagbox-overlay .task.graph-hist { opacity: 0.62; }
+.dagbox-overlay .task.graph-agent {
+  border-left-style: solid;
+}
+.graph-agent-legend {
+  display: flex; flex-wrap: wrap; gap: 0.45rem 0.85rem;
+  margin-top: 0.55rem; padding-top: 0.35rem;
+}
+.graph-agent-legend-item {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.72rem; color: var(--muted);
+}
+.graph-agent-legend-item .adot {
+  width: 0.55rem; height: 0.55rem; border-radius: 50%; flex-shrink: 0;
+}
 .dagbox-empty {
   position: absolute; inset: 0; z-index: 2;
   display: flex; align-items: center; justify-content: center;
