@@ -1,5 +1,5 @@
 {
-  "defaultProvider": "ollama-local",
+  "defaultProvider": "cursor",
   "providers": {
     "ollama-local": {
       "type": "ollama",
@@ -21,6 +21,11 @@
       "baseUrl": "https://openrouter.ai/api/v1",
       "model": "google/gemma-4-31b-it:free",
       "apiKeyEnv": "OPENROUTER_API_KEY"
+    },
+    "cursor": {
+      "type": "cursor",
+      "model": "auto",
+      "command": "cursor-agent"
     }
   },
   "roles": {
