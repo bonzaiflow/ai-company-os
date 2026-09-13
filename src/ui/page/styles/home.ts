@@ -4,6 +4,13 @@ export const HOME = `/* Home hierarchy */
 #viewSkill > section { max-width: 1200px; margin: 0 auto; width: 100%; }
 #viewHome { position: relative; }
 #viewHome > section { width: 100%; margin: 0 auto; }
+/* Let home sections size to content so #viewHome (overflow-y: auto) can scroll.
+   Default grid stretch + overflow:hidden on the section clipped the page below the fold. */
+#viewHome.home-welcome,
+#viewHome.home-directory {
+  align-items: start;
+  align-content: start;
+}
 #viewHome.home-directory > #homeDirectory { max-width: none; padding: 0; }
 #viewHome.home-welcome > #homeWelcome { max-width: none; padding: 0; }
 #viewHome.home-welcome > #homeDirectory,
@@ -151,8 +158,11 @@ export const HOME = `/* Home hierarchy */
 /* Welcome hero */
 #homeWelcome {
   min-height: 100%;
+  width: 100%;
   position: relative;
-  overflow: hidden;
+  /* Clip decorative glow sideways only — vertical hidden blocked page scroll */
+  overflow-x: hidden;
+  overflow-y: visible;
   background: transparent;
 }
 #homeWelcome::before {

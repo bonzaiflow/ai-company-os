@@ -127,8 +127,10 @@ function renderPlanDiagram(box, p) {
 function renderPlanOrg(box, p) {
   var agents = p.agents || [];
   if (!agents.length) return;
+  var scroll = el('div', 'org-scroll');
   var holder = el('div', 'org plan-org');
-  box.appendChild(holder);
+  scroll.appendChild(holder);
+  box.appendChild(scroll);
   renderOrgInto(holder, agents, {
     static: true,
     showTools: true,

@@ -93,7 +93,9 @@ export const COMPANY = `<main id="viewCompany" class="agent-open">
       </div>
     </div>
     <div class="co-org-label">Organization</div>
-    <div class="org" id="org"></div>
+    <div class="org-scroll">
+      <div class="org" id="org"></div>
+    </div>
   </section>
   <section class="sidebar agent-sidebar" id="agentSidebar">
     <div class="side-head">
