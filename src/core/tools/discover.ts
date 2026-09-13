@@ -86,6 +86,16 @@ const OSM_CATEGORIES: OsmCategory[] = [
     exclude: /jobcenter|job.?center|arbeitsagentur|agentur für arbeit|bundesagentur|jobpoint|jobbörse|sozialamt/i,
   },
   {
+    label: "consulting",
+    match: /consult|beratung|advisory|management.?consult|strategy|unternehmensberat/i,
+    selectors: ['"office"="consultant"', '"office"="it"', '"office"="accountant"', '"office"="financial"'],
+  },
+  {
+    label: "marketing/advertising",
+    match: /market|advert|werbe|kommunikation|advertising|graphic.?design|marketing.?agenc/i,
+    selectors: ['"office"="advertising_agency"', '"office"="graphic_design"', '"office"="marketing"'],
+  },
+  {
     label: "handwerk/craft",
     match: /shk|sanit|heizung|elektr|dach|tischler|schreiner|maler|fliesen|zimmer|\bbau\b|metall|garten|handwerk|plumber|electric|roof|carpenter|paint|tiler|craft/i,
     selectors: [], // filled in from craft tags below
@@ -140,6 +150,28 @@ export const DACH_CITIES = [
   "Wiener Neustadt","Steyr","Feldkirch","Bregenz","Leonding","Klosterneuburg","Baden bei Wien","Wolfsberg","Krems","Kufstein",
   "Zürich","Genf","Basel","Bern","Lausanne","Winterthur","Luzern","Sankt Gallen","Lugano","Biel",
   "Thun","Köniz","La Chaux-de-Fonds","Freiburg (CH)","Schaffhausen","Chur","Neuenburg","Vernier","Uster","Sitten",
+];
+
+/** Tier-1 knowledge-SME geos (NL/DK/SE/FI/IE/LU) + major BE/FR/UK cities for ICP sweeps. */
+export const EU_TIER1_CITIES = [
+  "Amsterdam","Rotterdam","Den Haag","Utrecht","Eindhoven","Groningen","Tilburg","Almere","Breda","Nijmegen",
+  "Apeldoorn","Haarlem","Arnhem","Zaanstad","Amersfoort","Haarlemmermeer","Zwolle","Leiden","Maastricht","Dordrecht",
+  "Copenhagen","Aarhus","Odense","Aalborg","Esbjerg","Randers","Kolding","Horsens","Vejle","Roskilde",
+  "Stockholm","Göteborg","Malmö","Uppsala","Västerås","Örebro","Linköping","Helsingborg","Jönköping","Norrköping",
+  "Lund","Umeå","Gävle","Borås","Södertälje","Eskilstuna","Karlstad","Halmstad","Växjö","Sundsvall",
+  "Helsinki","Espoo","Tampere","Vantaa","Oulu","Turku","Jyväskylä","Lahti","Kuopio","Pori",
+  "Dublin","Cork","Limerick","Galway","Waterford",
+  "Luxembourg","Esch-sur-Alzette",
+  "Brussels","Antwerp","Ghent","Bruges","Leuven","Liège",
+];
+
+/** City list for knowledge ICPs (consulting / marketing / recruitment): Tier-1 + DACH. */
+export const KNOWLEDGE_CITIES = [...EU_TIER1_CITIES, ...DACH_CITIES];
+
+/** ISO3166-1 codes for country-wide Overpass area sweeps (knowledge ICPs).
+ * Much denser than city bboxes — use when city auto-sweep is too slow/thin for 10k. */
+export const KNOWLEDGE_COUNTRY_CODES = [
+  "NL", "DK", "SE", "FI", "IE", "LU", "BE", "DE", "AT", "CH", "GB", "FR",
 ];
 
 const UA_OSM = "ai-company-os-lead-discovery/0.1 (agent-swarm research)";
@@ -237,15 +269,53 @@ async function overpassBusinesses(
   return rows.map((r) => ({ ...r, city }));
 }
 
+/** Country-wide Overpass via ISO3166-1 area — denser than city bboxes for 10k targets. */
+async function overpassCountry(
+  iso: string,
+  selectors: string[],
+  signal?: AbortSignal
+): Promise<Business[]> {
+  const code = iso.toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return [];
+  const q =
+    `[out:json][timeout:90];` +
+    `area["ISO3166-1"="${code}"][admin_level=2]->.a;(` +
+    selectors.map((sel) => `nwr[${sel}](area.a);`).join("") +
+    `);out tags 5000;`;
+  // Prefer real addr:city from OSM; country bookkeeping is via .discover-swept.json
+  return overpassRaw(q, signal, "");
+}
+
+function readSweptMeta(companyDir: string): { keys: string[] } {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(companyDir, "data", ".discover-swept.json"), "utf8")) as {
+      keys?: string[];
+      countries?: string[]; // legacy
+    };
+    const keys = [...(raw.keys ?? []), ...(raw.countries ?? [])];
+    return { keys: [...new Set(keys)] };
+  } catch {
+    return { keys: [] };
+  }
+}
+
+function markSwept(companyDir: string, key: string): void {
+  const meta = readSweptMeta(companyDir);
+  if (!meta.keys.includes(key)) meta.keys.push(key);
+  ensureDir(path.join(companyDir, "data"));
+  fs.writeFileSync(path.join(companyDir, "data", ".discover-swept.json"), JSON.stringify(meta, null, 2));
+}
+
 export const discoverTool: Tool = {
   name: "discover",
   doc:
     "discover — find REAL businesses from OpenStreetMap and write them straight into a table " +
     "(name, website, email, phone, city — deduped, nothing invented). " +
     "You MUST say what KIND of business via trades or segment: handwerk e.g. trades:[\"SHK\",\"Elektro\",\"Dachdecker\"], " +
-    'or recruitment e.g. segment:"recruitment" (also staffing/executive-search). It refuses if it can\'t tell — it will NOT guess. ' +
-    'args: {"trades": ["SHK"], "segment": "recruitment", "into": "firms", "db": "main.db", "country": "DE"}. ' +
-    "EASIEST: omit cities — discover auto-sweeps a built-in list of ~150 DACH cities, skipping ones already in the " +
+    'or recruitment e.g. segment:"recruitment", consulting e.g. segment:"consulting", marketing e.g. segment:"marketing". ' +
+    "It refuses if it can't tell — it will NOT guess. " +
+    'args: {"segment": "consulting", "into": "maps_raw", "db": "leads.db", "country": "NL"}. ' +
+    "EASIEST: omit cities — discover auto-sweeps built-in cities (knowledge ICPs use Tier-1 EU + DACH; crafts use DACH), skipping ones already in the " +
     "table, so just call it again and again until the region is exhausted. (Or pass your own \"cities\": [..].) " +
     "Returns NEW rows + table total. (For web-search discovery instead, pass {\"queries\": [\"...\"]}.)",
   async run(ctx, args) {
@@ -255,17 +325,25 @@ export const discoverTool: Tool = {
     if (!/^[\w.-]+$/.test(dbName)) throw new Error("db must be a plain filename");
     const seg = str(args.segment);
     const country = str(args.country);
+    const trades = Array.isArray(args.trades)
+      ? (args.trades as unknown[]).map((t) => String(t).toLowerCase())
+      : [];
 
     let cities = Array.isArray(args.cities)
       ? (args.cities as unknown[]).map(String).filter(Boolean)
       : [];
-    // AUTO-SWEEP: no explicit cities (and not a web-query call) → walk the
-    // built-in DACH list, skipping cities already present in the table so every
-    // call hits NEW ground. This is what lets a target actually climb to 10000
-    // instead of re-scraping the same 20 cities forever.
+    let countries = Array.isArray(args.countries)
+      ? (args.countries as unknown[]).map((c) => String(c).toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c))
+      : [];
+    // AUTO-SWEEP: no explicit cities/countries (and not a web-query call) →
+    // for knowledge ICPs prefer country-area sweeps (dense), else walk cities.
     const wantWeb = Array.isArray(args.queries) || str(args.query);
     const overpassQl = str(args.overpassQl);
-    if (!cities.length && !wantWeb && !overpassQl) {
+    const knowledge =
+      /recruit|staff|consult|market|advert|beratung|werbe|personal|headhunt/i.test(
+        [...trades, seg].join(" ")
+      );
+    if (!cities.length && !countries.length && !wantWeb && !overpassQl) {
       const dbPath = safePath(ctx.company.dir, path.join("data", dbName));
       const swept = new Set<string>();
       if (fs.existsSync(dbPath)) {
@@ -283,27 +361,37 @@ export const discoverTool: Tool = {
           db.close();
         } catch {}
       }
-      // small batch = a discover call finishes in ~1 min, so Stop is responsive
-      // and the row count updates often; the continue-gate calls it again anyway
-      cities = DACH_CITIES.filter((c) => !swept.has(c)).slice(0, 8);
-      if (!cities.length) {
-        return `discover: all ${DACH_CITIES.length} built-in DACH cities already swept into ${table} — the region is exhausted for this trade set. Report the honest total to the owner.`;
+      if (knowledge) {
+        // one country×category per call — Overpass area queries are heavy
+        const catKey = (resolveOsmSelectors(trades, seg)?.label || seg || "unknown").replace(/\W+/g, "_");
+        const already = new Set(readSweptMeta(ctx.company.dir).keys);
+        countries = KNOWLEDGE_COUNTRY_CODES.filter((c) => !already.has(`${catKey}:${c}`)).slice(0, 1);
+        if (!countries.length) {
+          // fall back to remaining city pool after countries exhausted
+          cities = KNOWLEDGE_CITIES.filter((c) => !swept.has(c)).slice(0, 8);
+          if (!cities.length) {
+            return `discover: all ${KNOWLEDGE_COUNTRY_CODES.length} knowledge countries and ${KNOWLEDGE_CITIES.length} cities already swept into ${table} — region exhausted. Report the honest total to the owner.`;
+          }
+        }
+      } else {
+        const cityPool = DACH_CITIES;
+        cities = cityPool.filter((c) => !swept.has(c)).slice(0, 8);
+        if (!cities.length) {
+          return `discover: all ${cityPool.length} built-in cities already swept into ${table} — the region is exhausted for this trade set. Report the honest total to the owner.`;
+        }
       }
     }
-    const trades = Array.isArray(args.trades)
-      ? (args.trades as unknown[]).map((t) => String(t).toLowerCase())
-      : [];
 
     // Resolve WHICH kind of business to look for on OSM. If we can't tell,
     // REFUSE rather than silently returning handwerk (the old bug that filled a
     // recruitment company with plumbers). Only matters for the tag-based OSM
     // path — a raw overpassQl query IS the specification.
-    const wantOsm = cities.length > 0 && !overpassQl;
+    const wantOsm = (cities.length > 0 || countries.length > 0) && !overpassQl;
     const category = wantOsm ? resolveOsmSelectors(trades, seg) : null;
     if (wantOsm && !category) {
       throw new Error(
         `discover: can't tell what kind of business to find from trades=[${trades.join(",")}] segment="${seg}". ` +
-          `Pass trades for handwerk (e.g. ["SHK","Elektro"]) or a recognized segment like "recruitment"/"staffing". ` +
+          `Pass trades for handwerk (e.g. ["SHK","Elektro"]) or a recognized segment like "recruitment"/"consulting"/"marketing". ` +
           `I will not guess — otherwise you'd get the wrong businesses.`
       );
     }
@@ -328,6 +416,15 @@ export const discoverTool: Tool = {
         throw new Error('overpassQl must start with [out:json] (test your query on overpass-turbo.eu first)');
       }
       rows.push(...(await overpassRaw(overpassQl, ac.signal)));
+    } else if (countries.length) {
+      source = "osm-country";
+      const catKey = (category!.label || seg || "unknown").replace(/\W+/g, "_");
+      for (const iso of countries.slice(0, 4)) {
+        if (ctx.shouldStop?.() || ac.signal.aborted) { stopped = true; break; }
+        rows.push(...(await overpassCountry(iso, category!.selectors, ac.signal)));
+        // mark even on partial/empty so we don't hammer the same country forever
+        markSwept(ctx.company.dir, `${catKey}:${iso}`);
+      }
     } else if (cities.length) {
       // primary: OpenStreetMap local-business discovery. Stop is checked
       // between cities AND aborts the current fetch, so it lands in <1s; any
@@ -374,7 +471,7 @@ export const discoverTool: Tool = {
       return `discover(${source}): STOPPED by owner mid-sweep — ${w.added} NEW rows written before stopping (table now ${w.total}). Partial progress saved.`;
     }
     return (
-      `discover(${source}): ${rows.length} businesses found${cities.length ? ` across ${cities.length} cities` : ""} → ` +
+      `discover(${source}): ${rows.length} businesses found${countries.length ? ` across ${countries.length} countries` : cities.length ? ` across ${cities.length} cities` : ""} → ` +
       `${w.added} NEW rows in ${table} (${w.withEmail} had an email, ${w.skipped} duplicates skipped; table now ${w.total}). ` +
       `Keep calling with DIFFERENT cities/trades until the target is met.`
     );
