@@ -71,6 +71,7 @@ export async function tick(
   } else {
     const claimed = co.loadTask(id);
     claimed.status = "running";
+    claimed.startedAt = new Date().toISOString();
     co.saveTask(claimed);
   }
 

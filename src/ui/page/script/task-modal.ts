@@ -98,6 +98,15 @@ function renderTaskModal(d, isUpdate, opts) {
       grid.appendChild(prioCell);
       grid.appendChild(metaCell('created', fmtTs(t.createdAt)));
       grid.appendChild(metaCell('updated', fmtTs(t.updatedAt)));
+      if (t.startedAt || t.status === 'running') {
+        var runCell = metaCell('elapsed', formatElapsed(taskElapsedMs(t)));
+        var runVal = runCell.querySelector('.v') || runCell.lastChild;
+        if (t.status === 'running' && runVal && runVal.setAttribute) {
+          ensureElapsedTicker();
+          runVal.setAttribute('data-elapsed-since', t.startedAt || t.updatedAt);
+        }
+        grid.appendChild(runCell);
+      }
       if (t.attempts) grid.appendChild(metaCell('attempts', t.attempts + ' / ' + (t.maxAttempts || 3)));
       body.appendChild(grid);
 

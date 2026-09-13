@@ -29,6 +29,8 @@ export interface Task {
   priority: "low" | "normal" | "high";
   createdAt: string;
   updatedAt: string;
+  /** ISO time when status last became running (for live elapsed UI) */
+  startedAt?: string;
   description: string;
   result?: string;
   /** failed attempts so far; task only goes terminally failed at maxAttempts */
@@ -168,7 +170,11 @@ export interface ConnectorsState {
   lastPollAt?: string;
   lastError?: string;
   email?: { lastUid?: number };
-  telegram?: { lastUpdateId?: number };
+  telegram?: {
+    lastUpdateId?: number;
+    lastNudgeAt?: string;
+    lastNudgeKind?: string;
+  };
 }
 
 export interface CompanyMeta {

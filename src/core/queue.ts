@@ -105,6 +105,7 @@ export function claimReadyWave(co: Company, maxParallel = 4): string[] {
   for (const id of claim) {
     const t = co.loadTask(id);
     t.status = "running";
+    t.startedAt = new Date().toISOString();
     co.saveTask(t);
   }
   return claim;

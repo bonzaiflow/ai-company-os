@@ -65,6 +65,8 @@ function taskCard(t, opts) {
   if (t.priority === 'high') right.appendChild(el('span', 'pill neutral', 'high'));
   if (t.status === 'running' && runningN > 1) right.appendChild(el('span', 'parallel-tag', 'parallel'));
   if (t.status === 'running') right.appendChild(el('span', 'spinner'));
+  var elapsed = elapsedBadge(t);
+  if (elapsed) right.appendChild(elapsed);
   right.appendChild(el('span', 'pill ' + t.status, t.status));
   head.appendChild(right);
   d.appendChild(head);
@@ -142,7 +144,7 @@ function openTaskGraph(opts) {
       body.appendChild(toolbar);
 
       body.appendChild(el('div', 'muted',
-        'Edges are parent \\u2192 child. Click a node to open the task.'));
+        'Edges are parent \\u2192 child. Cards tinted by assignee. Click a node to open the task.'));
 
       if (typeof cytoscape === 'undefined') {
         body.appendChild(el('div', 'muted', 'Graph library unavailable.'));
@@ -151,6 +153,8 @@ function openTaskGraph(opts) {
 
       var holder = el('div', 'dagbox');
       body.appendChild(holder);
+      var legendHost = el('div', 'graph-agent-legend');
+      body.appendChild(legendHost);
       var cy = null;
 
       function syncFilterButtons() {
@@ -188,6 +192,8 @@ function openTaskGraph(opts) {
         if (cy) { cy.destroy(); cy = null; }
         holder.innerHTML = '';
         if (!tasks.length) {
+          legendHost.innerHTML = '';
+          legendHost.hidden = true;
           var empty = el('div', 'dagbox-empty muted', taskGraphShowHistory
             ? 'No tasks yet.'
             : 'Queue is empty \\u2014 toggle + History to see finished work.');
@@ -222,10 +228,13 @@ function openTaskGraph(opts) {
         });
 
         var cardMap = {};
+        var agentsInView = {};
         tasks.forEach(function (t) {
           var hist = t.status === 'done' || t.status === 'failed';
+          var color = agentColor(t.assignee);
+          agentsInView[t.assignee] = color;
           var card = taskCard(t, {
-            extraClass: hist ? 'graph-hist' : '',
+            extraClass: 'graph-agent' + (hist ? ' graph-hist' : ''),
             onOpen: function (id) {
               openTaskModal(id, {
                 back: {
@@ -235,6 +244,10 @@ function openTaskGraph(opts) {
               });
             }
           });
+          card.style.setProperty('--graph-agent', color);
+          card.style.borderLeftColor = color;
+          card.style.borderLeftWidth = '3px';
+          card.style.background = 'color-mix(in srgb, ' + color + ' 14%, var(--surface))';
           overlay.appendChild(card);
           cardMap[t.id] = card;
           card.addEventListener('wheel', function (e) {
@@ -248,6 +261,18 @@ function openTaskGraph(opts) {
             });
           }, { passive: false });
         });
+
+        var legend = legendHost;
+        legend.innerHTML = '';
+        Object.keys(agentsInView).sort().forEach(function (name) {
+          var item = el('span', 'graph-agent-legend-item');
+          var dot = el('span', 'adot');
+          dot.style.background = agentsInView[name];
+          item.appendChild(dot);
+          item.appendChild(document.createTextNode(name));
+          legend.appendChild(item);
+        });
+        legend.hidden = !Object.keys(agentsInView).length;
 
         function syncCards() {
           if (!cy) return;

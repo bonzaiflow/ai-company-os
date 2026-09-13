@@ -39,6 +39,11 @@ function renderLiveStrip() {
   }
   running.forEach(function (t) {
     strip.appendChild(el('span', 'hot', '\\u25b6 ' + t.id + ' ' + t.assignee + ' '));
+    var eb = elapsedBadge(t, 'live-elapsed');
+    if (eb) {
+      strip.appendChild(eb);
+      strip.appendChild(document.createTextNode(' '));
+    }
     var tool = liveToolFor(t.assignee);
     if (tool) strip.appendChild(el('span', null, 'using ' + tool + ' '));
     var now = Date.now();
