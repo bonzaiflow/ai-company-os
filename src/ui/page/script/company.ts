@@ -109,6 +109,19 @@ function isOpenTaskStatus(status) {
 /** Remember filter when drilling into a task and returning. Default: active queue only. */
 var taskGraphShowHistory = false;
 
+function taskGraphFingerprint(tasks) {
+  return (tasks || []).map(function (t) {
+    return [
+      t.id,
+      t.status || '',
+      t.assignee || '',
+      t.parent || '',
+      t.title || '',
+      t.priority || ''
+    ].join(':');
+  }).sort().join('|');
+}
+
 function openTaskGraph(opts) {
   if (!state) return;
   opts = opts || {};
@@ -359,6 +372,16 @@ function openTaskGraph(opts) {
         paintGraph();
       };
       paintGraph();
+      taskGraphLive = {
+        fp: taskGraphFingerprint(allTasks),
+        refresh: function (tasks) {
+          allTasks = tasks || [];
+          var next = taskGraphFingerprint(allTasks);
+          if (taskGraphLive && next === taskGraphLive.fp) return;
+          if (taskGraphLive) taskGraphLive.fp = next;
+          paintGraph();
+        }
+      };
     }
   });
 }

@@ -5,10 +5,13 @@ var modalPoll = null;
 /** Live task modal session — kept while an audit overlay is open so polls
  * don't yank the UI back to the task. */
 var taskModalLive = null;
+/** Live task-graph session — refresh callback while the graph modal is open. */
+var taskGraphLive = null;
 
 function closeModal() {
   if (modalPoll) { clearInterval(modalPoll); modalPoll = null; }
   taskModalLive = null;
+  taskGraphLive = null;
   document.getElementById('modalRoot').innerHTML = '';
 }
 
@@ -27,6 +30,7 @@ function syncModalBackDot() {
  * Replaces the modal DOM but does NOT touch modalPoll — live re-renders keep
  * their polling; only closeModal() (user action) stops it. */
 function showModal(opts) {
+  taskGraphLive = null;
   var root = document.getElementById('modalRoot');
   root.innerHTML = '';
   var back = el('div', 'modal-backdrop');

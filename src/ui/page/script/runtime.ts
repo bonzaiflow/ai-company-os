@@ -54,8 +54,20 @@ function refreshRunner() {
           status.className = 'runtime-status busy';
           statusText.textContent = 'Running one wave\\u2026';
         } else {
-          status.className = 'runtime-status ready';
-          statusText.textContent = 'Ready';
+          var diskRunning = state && state.tasks
+            ? state.tasks.filter(function (t) { return t.status === 'running'; })
+            : [];
+          if (diskRunning.length) {
+            status.className = 'runtime-status busy';
+            var who = diskRunning.map(function (t) { return t.assignee || t.id; });
+            var uniq = who.filter(function (n, i) { return who.indexOf(n) === i; });
+            statusText.textContent = diskRunning.length === 1
+              ? ('Running via CLI/MCP \\u00b7 ' + uniq[0])
+              : ('Running via CLI/MCP \\u00b7 ' + diskRunning.length + ' parallel');
+          } else {
+            status.className = 'runtime-status ready';
+            statusText.textContent = 'Ready';
+          }
         }
       }
     })

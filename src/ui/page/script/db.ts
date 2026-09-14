@@ -494,6 +494,9 @@ function refresh(opts) {
       else if (selectedTab === 'chat') ensureChatPathsLinked();
       renderBudget(s.spent.tokens, s.meta.budget.tokens);
       renderLiveStrip();
+      if (taskGraphLive && typeof taskGraphLive.refresh === 'function') {
+        taskGraphLive.refresh(s.tasks || []);
+      }
       noteDataSig(s.dataSig);
       var apprLabel = s.pendingApprovals ? '\\u2713 Approvals (' + s.pendingApprovals + ')' : '\\u2713 Approvals';
       var apprColor = s.pendingApprovals ? '#e879f9' : '';
