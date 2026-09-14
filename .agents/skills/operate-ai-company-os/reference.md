@@ -18,6 +18,21 @@
 
 Or after `npm link`: `"command": "ai-company-os-mcp"` with the same `env`.
 
+## Codex MCP config example
+
+In `~/.codex/config.toml` (or project Codex config), register the same server and workspace root:
+
+```toml
+[mcp_servers.ai-company-os]
+command = "node"
+args = ["/absolute/path/to/ai-company-os/dist/mcp.js"]
+
+[mcp_servers.ai-company-os.env]
+AI_COMPANY_OS_ROOT = "/absolute/path/to/your/workspace"
+```
+
+After `npm link`, you can use `command = "ai-company-os-mcp"` with the same `env`. Keep `AI_COMPANY_OS_ROOT` identical to the folder selected in the dashboard so CLI/MCP ticks show up live on `/company/<slug>`.
+
 ## Curated MCP tools
 
 | Tool | Purpose |

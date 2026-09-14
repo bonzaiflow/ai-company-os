@@ -19,6 +19,7 @@ This skill is for *you* (the host). Do **not** confuse it with repo `skills/*/SK
 - MCP: `ai-company-os-mcp` / `node dist/mcp.js` — see [docs/MCP.md](../../../docs/MCP.md).
 - CLI: `ai-company-os --json …` with `-c <slug>` when needed — see [docs/CLI.md](../../../docs/CLI.md).
 - Destructive deletes need `--yes` or `AI_COMPANY_OS_YES=1` (MCP curated tools usually set yes).
+- To watch live progress in the dashboard, open `/company/<slug>` against the **same** workspace root as MCP (UI remembers a folder; MCP uses env or cwd).
 
 ## Default loop
 
@@ -69,8 +70,9 @@ Never spam `tick`/`run` without re-reading state. Handle **pending approvals** b
 - Editing company JSON by hand when a CLI/MCP verb exists
 - Confusing host ops with in-company `skills/` playbooks
 - Running unbounded loops without `shouldStop` / tick caps in interactive sessions
+- Pointing MCP at a different folder than the UI workspace (tasks won’t appear “live”)
 
 ## Deeper reference
 
 - Full CLI map: [docs/CLI.md](../../../docs/CLI.md)
-- MCP tools + Cursor `mcp.json`: [docs/MCP.md](../../../docs/MCP.md) and [reference.md](reference.md)
+- MCP tools + Cursor / Codex config: [docs/MCP.md](../../../docs/MCP.md) and [reference.md](reference.md)

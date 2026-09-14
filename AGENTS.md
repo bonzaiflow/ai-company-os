@@ -4,7 +4,8 @@ Instructions for **host** agents (Cursor, Claude Code, Codex, etc.) driving this
 
 Prefer **MCP** (`ai-company-os-mcp`) or **`ai-company-os --json`**. The web UI is optional.
 
-Detailed playbook: [`.cursor/skills/operate-ai-company-os/SKILL.md`](.cursor/skills/operate-ai-company-os/SKILL.md)  
+Detailed playbook: [`.agents/skills/operate-ai-company-os/SKILL.md`](.agents/skills/operate-ai-company-os/SKILL.md)  
+(Cursor and Claude Code load the same skill via `.cursor/skills/` / `.claude/skills/` symlinks.)  
 CLI / MCP maps: [`docs/CLI.md`](docs/CLI.md), [`docs/MCP.md`](docs/MCP.md)
 
 ## Not the same as `skills/`
