@@ -4,17 +4,23 @@ export const HOME = `<main id="viewHome" class="on home-welcome">
     <div class="home-hero">
       <div class="home-hero-copy">
         <div class="home-brand">AI Company OS</div>
-        <h1 class="home-headline">Build a company of agents</h1>
-        <p class="home-lead">Plan a roster in chat, launch it to disk, and let agents work from plain files — companies, tasks, and artifacts you can open in any editor.</p>
-        <div class="home-cta-row">
+        <h1 class="home-headline" id="homeHeadline">Build a company of agents</h1>
+        <p class="home-lead" id="homeLead">Plan a roster in chat, launch it to disk, and let agents work from plain files — companies, tasks, and artifacts you can open in any editor.</p>
+        <div class="home-cta-row" id="homeCtaWelcome">
           <button type="button" class="btn home-cta" onclick="openPlan(null)">Start a plan</button>
           <button type="button" class="home-link" onclick="nav('skills')">Browse skills</button>
+        </div>
+        <div class="home-cta-row" id="homeCtaSetup" hidden>
+          <button type="button" class="btn home-cta" onclick="openWorkspacePicker()">Set up workspace</button>
+          <button type="button" class="home-link" onclick="openWorkspacePicker()">Browse folders</button>
         </div>
         <button type="button" class="home-workspace" id="homeWorkspaceWelcome" onclick="openWorkspacePicker()" title="Change workspace folder">
           <span class="home-workspace-label">Workspace</span>
           <span class="home-workspace-path" id="homeWorkspacePathWelcome">Loading…</span>
+          <span class="home-workspace-status" id="homeWorkspaceStatusWelcome"></span>
           <span class="home-workspace-change">Change</span>
         </button>
+        <p class="home-workspace-note" id="homeWorkspaceNoteWelcome" hidden>Dashboard remembers this folder. Cursor / Claude / Codex MCP should use the same path (<code>AI_COMPANY_OS_ROOT</code> or cwd).</p>
       </div>
       <div class="home-hero-visual" aria-hidden="true">
         <svg class="home-constellation" viewBox="0 0 420 360" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -62,7 +68,7 @@ export const HOME = `<main id="viewHome" class="on home-welcome">
         </svg>
       </div>
     </div>
-    <div class="home-below">
+    <div class="home-below" id="homeWelcomeBelow">
       <div class="home-steps">
         <div class="home-step">
           <div class="home-step-num">01</div>
@@ -98,6 +104,7 @@ export const HOME = `<main id="viewHome" class="on home-welcome">
           <button type="button" class="home-workspace home-workspace-inline" id="homeWorkspaceDir" onclick="openWorkspacePicker()" title="Change workspace folder">
             <span class="home-workspace-label">Workspace</span>
             <span class="home-workspace-path" id="homeWorkspacePathDir">Loading…</span>
+            <span class="home-workspace-status" id="homeWorkspaceStatusDir"></span>
             <span class="home-workspace-change">Change</span>
           </button>
         </div>

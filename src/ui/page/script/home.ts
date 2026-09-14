@@ -155,17 +155,51 @@ function homePortfolioPageDelta(delta) {
 
 var workspaceRoot = '';
 var workspaceBrowsePath = '';
+var workspaceInitialized = false;
 
 function setHomeMode(mode) {
   var view = document.getElementById('viewHome');
   var welcome = document.getElementById('homeWelcome');
   var directory = document.getElementById('homeDirectory');
   if (!view) return;
-  var welcomeMode = mode === 'welcome';
+  var welcomeMode = mode === 'welcome' || mode === 'setup';
   view.classList.toggle('home-welcome', welcomeMode);
   view.classList.toggle('home-directory', !welcomeMode);
+  view.classList.toggle('home-setup', mode === 'setup');
   if (welcome) welcome.hidden = !welcomeMode;
   if (directory) directory.hidden = welcomeMode;
+
+  var headline = document.getElementById('homeHeadline');
+  var lead = document.getElementById('homeLead');
+  var ctaWelcome = document.getElementById('homeCtaWelcome');
+  var ctaSetup = document.getElementById('homeCtaSetup');
+  var below = document.getElementById('homeWelcomeBelow');
+  var note = document.getElementById('homeWorkspaceNoteWelcome');
+
+  if (mode === 'setup') {
+    if (headline) headline.textContent = 'Choose a workspace';
+    if (lead) {
+      lead.textContent = 'Companies live in a folder with ai-company-os.json, companies/, plans/, and skills/. Pick or initialize one to continue.';
+    }
+    if (ctaWelcome) ctaWelcome.hidden = true;
+    if (ctaSetup) ctaSetup.hidden = false;
+    if (below) below.hidden = true;
+    if (note) note.hidden = true;
+  } else if (mode === 'welcome') {
+    if (headline) headline.textContent = 'Build a company of agents';
+    if (lead) {
+      lead.textContent = 'Plan a roster in chat, launch it to disk, and let agents work from plain files — companies, tasks, and artifacts you can open in any editor.';
+    }
+    if (ctaWelcome) ctaWelcome.hidden = false;
+    if (ctaSetup) ctaSetup.hidden = true;
+    if (below) below.hidden = false;
+    if (note) note.hidden = false;
+  } else {
+    if (ctaWelcome) ctaWelcome.hidden = false;
+    if (ctaSetup) ctaSetup.hidden = true;
+    if (below) below.hidden = false;
+    if (note) note.hidden = true;
+  }
 }
 
 function shortWorkspacePath(p) {
@@ -180,8 +214,9 @@ function shortWorkspacePath(p) {
   return p;
 }
 
-function setWorkspacePathLabels(root) {
+function setWorkspacePathLabels(root, initialized) {
   workspaceRoot = root || '';
+  if (typeof initialized === 'boolean') workspaceInitialized = initialized;
   var label = shortWorkspacePath(workspaceRoot) || workspaceRoot || '—';
   ['homeWorkspacePathWelcome', 'homeWorkspacePathDir'].forEach(function (id) {
     var n = document.getElementById(id);
@@ -190,11 +225,19 @@ function setWorkspacePathLabels(root) {
       n.title = workspaceRoot;
     }
   });
+  var statusText = workspaceInitialized ? '' : 'Not initialized';
+  ['homeWorkspaceStatusWelcome', 'homeWorkspaceStatusDir'].forEach(function (id) {
+    var n = document.getElementById(id);
+    if (!n) return;
+    n.textContent = statusText;
+    n.hidden = !statusText;
+    n.className = 'home-workspace-status' + (workspaceInitialized ? '' : ' warn');
+  });
 }
 
 function refreshWorkspacePath() {
   return fetch('/api/workspace').then(function (r) { return r.json(); }).then(function (d) {
-    if (d && d.root) setWorkspacePathLabels(d.root);
+    if (d && d.root) setWorkspacePathLabels(d.root, !!d.initialized);
     return d;
   }).catch(function () { return null; });
 }
@@ -225,7 +268,7 @@ function switchWorkspace(root, init) {
     body: JSON.stringify({ root: root, init: !!init })
   }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); }).then(function (res) {
     if (!res.ok || res.d.error) throw new Error(res.d.error || 'Failed to switch workspace');
-    setWorkspacePathLabels(res.d.root);
+    setWorkspacePathLabels(res.d.root, !!res.d.initialized);
     resetClientWorkspaceState();
     closeModal();
     nav('home');
@@ -268,28 +311,36 @@ function openWorkspacePicker() {
       var cancel = el('button', 'btn ghost', 'Cancel');
       cancel.type = 'button';
       cancel.onclick = closeModal;
-      var initBtn = el('button', 'btn ghost', 'Initialize & use');
+      var initBtn = el('button', 'btn', 'Initialize & use');
       initBtn.type = 'button';
       initBtn.title = 'Create ai-company-os.json, companies/, plans/, skills/ in this folder';
-      var useBtn = el('button', 'btn', 'Use this folder');
+      var useBtn = el('button', 'btn ghost', 'Use this folder');
       useBtn.type = 'button';
       actions.appendChild(cancel);
-      actions.appendChild(initBtn);
       actions.appendChild(useBtn);
+      actions.appendChild(initBtn);
       wrap.appendChild(actions);
       body.appendChild(wrap);
+
+      var browseInitialized = false;
 
       function setBusy(on) {
         useBtn.disabled = !!on;
         initBtn.disabled = !!on;
         goBtn.disabled = !!on;
-        if (on) useBtn.textContent = 'Switching…';
-        else useBtn.textContent = 'Use this folder';
+        if (on) {
+          if (!browseInitialized) initBtn.textContent = 'Switching\\u2026';
+          else useBtn.textContent = 'Switching\\u2026';
+        } else {
+          initBtn.textContent = 'Initialize & use';
+          useBtn.textContent = 'Use this folder';
+        }
       }
 
       function renderBrowse(data) {
         browsePath = data.path;
         workspaceBrowsePath = data.path;
+        browseInitialized = !!data.initialized;
         pathInput.value = data.path;
         navRow.innerHTML = '';
         if (data.parent) {
@@ -319,9 +370,12 @@ function openWorkspacePicker() {
         }
         status.textContent = data.initialized
           ? 'Initialized workspace'
-          : 'Not initialized — use Initialize & use to scaffold';
+          : 'Not initialized — Initialize & use scaffolds this folder';
         status.className = 'ws-picker-status' + (data.initialized ? ' ready' : '');
         initBtn.style.display = data.initialized ? 'none' : '';
+        useBtn.style.display = data.initialized ? '' : 'none';
+        initBtn.className = 'btn';
+        useBtn.className = 'btn';
         err.textContent = '';
       }
 
@@ -344,6 +398,10 @@ function openWorkspacePicker() {
         var target = pathInput.value.trim() || browsePath;
         if (!target) return;
         err.textContent = '';
+        if (!browseInitialized) {
+          err.textContent = 'Initialize this folder first';
+          return;
+        }
         setBusy(true);
         switchWorkspace(target, false).catch(function (e) {
           setBusy(false);
@@ -399,13 +457,28 @@ function renderPlanCards(list) {
 }
 
 function loadHome() {
-  refreshWorkspacePath();
   Promise.all([
+    fetch('/api/workspace').then(function (r) { return r.json(); }),
     fetch('/api/companies').then(function (r) { return r.json(); }),
     fetch('/api/plans').then(function (r) { return r.json(); })
   ]).then(function (results) {
-    var list = Array.isArray(results[0]) ? results[0] : [];
-    var plans = Array.isArray(results[1]) ? results[1] : [];
+    var ws = results[0] || {};
+    var list = Array.isArray(results[1]) ? results[1] : [];
+    var plans = Array.isArray(results[2]) ? results[2] : [];
+    if (ws.root) setWorkspacePathLabels(ws.root, !!ws.initialized);
+    else refreshWorkspacePath();
+
+    if (!ws.initialized) {
+      setHomeMode('setup');
+      try {
+        if (!sessionStorage.getItem('wsPickerAutoOpened')) {
+          sessionStorage.setItem('wsPickerAutoOpened', '1');
+          setTimeout(function () { openWorkspacePicker(); }, 0);
+        }
+      } catch (e) {}
+      return;
+    }
+
     var empty = !list.length && !plans.length;
     setHomeMode(empty ? 'welcome' : 'directory');
 
@@ -476,9 +549,9 @@ function loadHome() {
     }
     renderPlanCards(plans);
     loadHomeSkills('skillCards');
-  }).catch(function () {
-    setHomeMode('welcome');
-    loadHomeSkills('skillCardsWelcome');
+  }).catch(function (e) {
+    setHomeMode('setup');
+    showToast((e && e.message) ? e.message : 'Failed to load workspace', 'err');
   });
 }
 

@@ -7,13 +7,16 @@ export const HOME = `/* Home hierarchy */
 /* Let home sections size to content so #viewHome (overflow-y: auto) can scroll.
    Default grid stretch + overflow:hidden on the section clipped the page below the fold. */
 #viewHome.home-welcome,
-#viewHome.home-directory {
+#viewHome.home-directory,
+#viewHome.home-setup {
   align-items: start;
   align-content: start;
 }
 #viewHome.home-directory > #homeDirectory { max-width: none; padding: 0; }
-#viewHome.home-welcome > #homeWelcome { max-width: none; padding: 0; }
+#viewHome.home-welcome > #homeWelcome,
+#viewHome.home-setup > #homeWelcome { max-width: none; padding: 0; }
 #viewHome.home-welcome > #homeDirectory,
+#viewHome.home-setup > #homeDirectory,
 #viewHome.home-directory > #homeWelcome { display: none !important; }
 
 .sec-row {
@@ -153,6 +156,21 @@ export const HOME = `/* Home hierarchy */
   font-size: 0.68rem; font-weight: 600; color: var(--blue-bright); flex-shrink: 0;
   border-left: 1px solid var(--border); padding-left: 0.55rem;
 }
+.home-workspace-status {
+  font-family: "JetBrains Mono", monospace; font-size: 0.62rem; font-weight: 600;
+  letter-spacing: 0.04em; color: var(--muted); flex-shrink: 0;
+}
+.home-workspace-status.warn { color: #fbbf24; }
+.home-workspace-status[hidden] { display: none !important; }
+.home-workspace-note {
+  margin: 0.85rem 0 0; max-width: 34rem; font-size: 0.78rem; line-height: 1.45; color: var(--muted);
+  opacity: 0; transform: translateY(10px); animation: home-rise 0.7s ease 0.4s forwards;
+}
+.home-workspace-note code {
+  font-family: "JetBrains Mono", monospace; font-size: 0.72rem;
+  color: color-mix(in srgb, var(--blue-bright) 70%, var(--muted));
+}
+.home-workspace-note[hidden] { display: none !important; }
 #viewHome .page-head-actions .home-workspace { max-width: min(100%, 22rem); }
 
 /* Welcome hero */
