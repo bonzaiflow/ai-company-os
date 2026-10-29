@@ -14,6 +14,7 @@ import { decideApproval } from "./core/governance.js";
 import { claimNext, delegateHeld, finishTask, WorkError } from "./core/lease.js";
 import { expireLeases } from "./core/queue.js";
 import { runLoop } from "./core/runtime.js";
+import { serveAgents } from "./mcp/remote.js";
 import { scaffoldCompany } from "./core/store.js";
 import { resolveToolName, toolsFor } from "./core/tools.js";
 import type { Plan } from "./types.js";
@@ -179,5 +180,41 @@ ext.saveTask(held.task);
 assert.deepEqual(expireLeases(ext), [late.id], "expired lease is reclaimed");
 assert.equal(ext.loadTask(late.id).status, "queued", "expired task requeued as a retry");
 assert.equal(ext.verifyAudit(), null, "audit chain intact");
+
+// ---- remote work API: token auth, ownership, MCP over HTTP ----
+const remoteAgent = ext.loadAgent("Human");
+remoteAgent.tokenEnv = "SMOKE_TOKEN_HUMAN";
+ext.saveAgent(remoteAgent);
+process.env.SMOKE_TOKEN_HUMAN = "smoke-token-human-0123456789abcdef";
+const remote = serveAgents(root, { port: 0, host: "127.0.0.1" });
+await new Promise((r) => remote.once("listening", r));
+const base = `http://127.0.0.1:${(remote.address() as { port: number }).port}`;
+const call = (pathname: string, body: unknown, token?: string) =>
+  fetch(base + pathname, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+assert.equal((await call("/api/work/external-co/next", {})).status, 401, "remote API needs a token");
+const remoteNext = (await (await call("/api/work/external-co/next", {}, process.env.SMOKE_TOKEN_HUMAN)).json()) as {
+  task: { id: string };
+  lease: { id: string };
+};
+assert.equal(remoteNext.task.id, late.id, "remote agent claims its own task");
+const tools = (await (
+  await call("/mcp/external-co", { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }, process.env.SMOKE_TOKEN_HUMAN)
+).json()) as { result: { tools: { name: string }[] } };
+assert.ok(tools.result.tools.some((t) => t.name === "work_done"), "remote MCP lists work tools");
+const remoteDone = await call(
+  "/api/work/external-co/done",
+  { taskId: late.id, lease: remoteNext.lease.id, result: "done remotely" },
+  process.env.SMOKE_TOKEN_HUMAN
+);
+assert.equal(((await remoteDone.json()) as { status: string }).status, "review", "remote done respects approveResults");
+remote.close();
 
 console.log("\nSMOKE TEST PASSED ✓  (workspace: " + root + ")");

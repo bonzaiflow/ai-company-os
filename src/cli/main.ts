@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +13,7 @@ import { Company, scaffoldCompany } from "../core/store.js";
 import { skillNames, skillSearchDirs } from "../core/skills.js";
 import { normalizePlan, planInteractive, planOnce, renderPlan, savePlan } from "../planner.js";
 import { serveUi } from "../ui/server.js";
+import { serveAgents } from "../mcp/remote.js";
 import type { AgentSpec, ChatMessage, Plan } from "../types.js";
 import { c, readJson, slugify, writeJson } from "../util.js";
 import {
@@ -552,6 +554,55 @@ program
     } finally {
       exported.cleanup();
     }
+  });
+
+program
+  .command("serve-agents")
+  .description("serve the work contract over HTTP + remote MCP for external agents (token required, nothing else exposed)")
+  .option("--port <port>", "port", "4848")
+  .option("--host <host>", "bind address (put a TLS tunnel/reverse proxy in front for remote use)", "127.0.0.1")
+  .option("--trust-proxy", "rate-limit by X-Forwarded-For (only behind your own proxy/tunnel)")
+  .action((opts) => {
+    serveAgents(ROOT, {
+      port: Number(opts.port),
+      host: String(opts.host),
+      trustProxy: !!opts.trustProxy,
+      log: (l) => console.log(l),
+    });
+  });
+
+program
+  .command("agent-token")
+  .description("create an access token for an external/manual agent (remote HTTP / MCP)")
+  .argument("<name>", "agent name")
+  .option("-c, --company <slug>")
+  .option("--env <var>", "env var that will hold the token (default AICOS_TOKEN_<NAME>)")
+  .option("--write-env", "append the token to the workspace .env")
+  .option("--json", "JSON output")
+  .action((name: string, opts) => {
+    if (opts.json) setJsonMode(true);
+    const co = openCompany(opts.company);
+    let agent: AgentSpec;
+    try {
+      agent = co.loadAgent(name);
+    } catch {
+      return fail(`no agent named ${name}`);
+    }
+    if (!agent.runtime || agent.runtime === "internal") {
+      return fail(`${name} is internal — set-runtime it to external or manual first`);
+    }
+    const envVar = String(opts.env || `AICOS_TOKEN_${slugify(name).replace(/-/g, "_").toUpperCase()}`);
+    if (!/^[A-Z_][A-Z0-9_]*$/.test(envVar)) return fail("env var name must be UPPER_SNAKE_CASE");
+    const token = randomBytes(32).toString("base64url");
+    agent.tokenEnv = envVar;
+    co.saveAgent(agent);
+    co.audit({ type: "agent.token", ok: true, agent: name, detail: `token issued in ${envVar}` });
+    if (opts.writeEnv) fs.appendFileSync(path.join(ROOT, ".env"), `\n${envVar}=${token}\n`);
+    out({ ok: true, agent: name, env: envVar, token, wroteEnv: !!opts.writeEnv }, () => {
+      console.log(c.green(`${name} now authenticates with $${envVar}`));
+      console.log(opts.writeEnv ? c.dim(`appended to ${path.join(ROOT, ".env")}`) : `${envVar}=${token}`);
+      console.log(c.dim("restart serve-agents so it sees the variable; the token is shown only once"));
+    });
   });
 
 program

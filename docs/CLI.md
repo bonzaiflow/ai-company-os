@@ -50,6 +50,8 @@ ai-company-os --json work message|inbox -c acme --as Chief …
 
 `AI_COMPANY_OS_ROOT` makes every command work from any directory.
 
+Remote agents (other machines, cloud, chat connectors): `ai-company-os agent-token <Name> --write-env` and `ai-company-os serve-agents [--port 4848] [--host 127.0.0.1] [--trust-proxy]` — HTTP + remote MCP for the work contract only, token required.
+
 ---
 
 ## Command map

@@ -96,6 +96,8 @@ Full command map: [CLI.md](./CLI.md).
 
 Set `AI_COMPANY_OS_AGENT` in the server's `env` to pin which org-chart agent this host is — one MCP entry per agent. See [AGENT-CONTRACT.md](./AGENT-CONTRACT.md).
 
+**Remote MCP:** `ai-company-os serve-agents` serves the same `work_*` tools over Streamable HTTP at `/mcp/<slug>` for hosts on other machines; the bearer token (`agent-token`) decides which agent the host is. See "Remote access" in AGENT-CONTRACT.md.
+
 ### Mixed sources example
 
 Pin different providers on one company (defaults unchanged until you pin):

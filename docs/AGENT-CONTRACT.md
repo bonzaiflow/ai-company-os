@@ -127,6 +127,46 @@ sandbox modes, allowed tools) and a narrow `cwd`. Prompt injection from scraped 
 for agents with a shell — keep secrets out of their environment and outbound actions behind
 company tools.
 
+## Remote access (HTTP and remote MCP)
+
+For agents that cannot run the CLI on this machine — cloud agents, Claude Desktop / claude.ai
+connectors, bots elsewhere — `serve-agents` exposes **only** the work contract (no dashboard, no
+operator actions), and every request needs the agent's own token:
+
+```sh
+ai-company-os agent-token Verifier -c acme --write-env   # sets tokenEnv in the profile, appends AICOS_TOKEN_VERIFIER=… to .env
+ai-company-os serve-agents --port 4848                    # binds 127.0.0.1 by default
+```
+
+| Endpoint | What |
+|---|---|
+| `POST /api/work/<slug>/<action>` | `next` `brief` `heartbeat` `done` `fail` `delegate` `release` `message` `inbox` — JSON body with the same fields as the CLI (`taskId`, `lease`, `result`, `reason`, `subtasks`, `to`, `text`, `wait`, `tokens`) |
+| `POST /mcp/<slug>` | MCP Streamable HTTP (stateless) with `work_*` tools; identity comes from the token |
+| `POST /mcp/<slug>/t/<token>` | same, token in the URL — only for clients that cannot send headers; treat the URL as a secret |
+| `GET /health` | liveness |
+
+`Authorization: Bearer <token>`. Status codes: `401` bad token (also for unknown companies), `409` lease
+or not your task, `400` bad input, `423` paused/budget/daily cap, `429` rate limit. Limits: 120 requests
+per minute per agent, 20 failed logins per minute per client IP (`--trust-proxy` makes the limit use
+`X-Forwarded-For` — only behind your own proxy). A token only ever acts as its agent: task actions are
+refused unless the task is assigned to that agent. Tokens are at least 24 characters; rotate one by
+running `agent-token` again and restarting `serve-agents`.
+
+**Reaching it from outside.** Keep `serve-agents` on 127.0.0.1 and put TLS in front:
+
+- Cloudflare Tunnel: `cloudflared tunnel --url http://127.0.0.1:4848` (quick test) or a named tunnel with your domain.
+- SSH reverse tunnel to a server you already run (e.g. the Dokploy host) and route a subdomain to it with
+  its reverse proxy: `ssh -N -R 127.0.0.1:4848:127.0.0.1:4848 user@server`, then `serve-agents --trust-proxy`.
+- Run the workspace on that server directly and point the proxy at port 4848.
+
+Never expose `ai-company-os ui` this way — the dashboard has no login.
+
+Claude Code example (remote MCP with header):
+
+```sh
+claude mcp add --transport http company-verifier https://agents.example.com/mcp/acme --header "Authorization: Bearer $AICOS_TOKEN_VERIFIER"
+```
+
 ## Profile fields
 
 ```yaml

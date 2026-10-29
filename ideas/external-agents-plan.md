@@ -1,6 +1,6 @@
 # Plan: Externe Agenten als Mitarbeiter (agent-agnostisch)
 
-Stand 2026-10-29. **Umgesetzt: Phase 0–5** (Branch `external-agents`), Phase 6–7 offen.
+Stand 2026-10-29. **Umgesetzt: Phase 0–6** (Branch `external-agents`), Phase 7 offen.
 Abweichungen vom ursprünglichen Plan stehen in Abschnitt 8. Spezifikation: [docs/AGENT-CONTRACT.md](../docs/AGENT-CONTRACT.md).
 
 Ziel: Claude Code, Codex, Cursor, Gemini-CLI, Claude-Chats, Cloud-Bots und
@@ -337,5 +337,9 @@ Lease-Ablauf neu startet.
   `readyCandidates` liest die Aufgaben nur noch einmal pro Durchlauf (läuft jetzt unter der Sperre).
 - **Tests:** `npm run check` = Build + Grenzen + Smoke (inkl. externer Agenten) + Race-Test
   (6 Prozesse; ohne Sperre schlägt er nachweislich fehl).
-- **Offen:** Phase 6 (HTTP/Remote-MCP, Pflicht-Token), Phase 7, Abnahme-Szenario mit echten
-  Agenten (Abschnitt 6).
+- **Phase 6 als eigener Server** (`serve-agents`) statt im UI-Server: Der UI-Server hat kein Login,
+  er darf nie öffentlich erreichbar sein. `serve-agents` zeigt nur den Vertrag, mit Pflicht-Token
+  (`agent-token`), Zuständigkeitsprüfung pro Aufgabe, Rate-Limit pro Agent und gegen Durchprobieren
+  pro IP (`--trust-proxy` hinter einem Tunnel), Remote-MCP zustandslos über Streamable HTTP.
+  Token alternativ im Pfad `/mcp/<slug>/t/<token>` für Clients ohne eigene Header.
+- **Offen:** Phase 7, Abnahme-Szenario mit echten Agenten (Abschnitt 6).
