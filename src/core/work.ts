@@ -1,4 +1,5 @@
 import type { AgentSpec, Task } from "../types.js";
+import { endLease } from "./agent-runtime.js";
 import type { Company } from "./store.js";
 
 /** The org-level actions every agent has — internal ticks and external
@@ -52,7 +53,7 @@ export function delegateTask(
       out.push(child);
     }
     task.status = "waiting";
-    task.lease = undefined;
+    endLease(co, task);
     co.saveTask(task);
     co.appendThought(
       agent.name,

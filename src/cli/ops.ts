@@ -3,6 +3,7 @@ import path from "node:path";
 import { writeJson } from "../util.js";
 import { flushQueue, raiseTaskPriority } from "../core/runtime.js";
 import { Company } from "../core/store.js";
+import { usageReport } from "../core/usage.js";
 import { c } from "../util.js";
 import {
   companyOption,
@@ -18,34 +19,53 @@ export function registerOpsCommands(program: Command, ctx: CliCtx): void {
     companyOption(
       program
         .command("budget")
-        .description("show or grant company token budget")
+        .description("show or grant company token budget, set a monthly cap, show cost per agent")
         .option("--add <tokens>", "grant additional tokens")
+        .option("--monthly <tokens>", "token cap per calendar month (UTC); 0 removes it")
         .action((opts) => {
           const co = openCompany(ctx, opts.company);
           const add = opts.add !== undefined ? Math.max(0, Number(opts.add) || 0) : 0;
           if (opts.add !== undefined && !add) fail("add must be a positive number");
+          const meta = co.meta;
           if (add) {
-            const meta = co.meta;
             meta.budget.tokens += add;
-            writeJson(path.join(co.dir, "company.json"), meta);
             co.audit({ type: "budget.granted", ok: true, detail: `+${add.toLocaleString()} tokens (cli)` });
           }
-          const spent = co.spent();
-          const budgetTokens = co.meta.budget.tokens;
+          if (opts.monthly !== undefined) {
+            const monthly = Math.max(0, Number(opts.monthly) || 0);
+            meta.budget.monthlyTokens = monthly || undefined;
+            co.audit({ type: "budget.monthly", ok: true, detail: monthly ? `${monthly.toLocaleString()} tokens/month (cli)` : "monthly cap removed (cli)" });
+          }
+          if (add || opts.monthly !== undefined) writeJson(path.join(co.dir, "company.json"), meta);
+          const u = usageReport(co);
           out(
             {
               ok: true,
-              budgetTokens,
-              spentTokens: spent.tokens,
-              remaining: Math.max(0, budgetTokens - spent.tokens),
+              budgetTokens: u.budgetTokens,
+              spentTokens: u.tokens,
+              remaining: Math.max(0, u.budgetTokens - u.tokens),
+              month: u.month,
+              monthTokens: u.tokensMonth,
+              monthlyTokens: u.monthlyTokens,
               added: add || undefined,
+              agents: u.agents,
             },
             () => {
               console.log(
                 c.bold(co.meta.slug) +
-                  `  budget ${spent.tokens.toLocaleString()}/${budgetTokens.toLocaleString()}` +
-                  (add ? c.green(`  (+${add.toLocaleString()})`) : "")
+                  `  budget ${u.tokens.toLocaleString()}/${u.budgetTokens.toLocaleString()}` +
+                  (add ? c.green(`  (+${add.toLocaleString()})`) : "") +
+                  `  ·  ${u.month}: ${u.tokensMonth.toLocaleString()}` +
+                  (u.monthlyTokens ? `/${u.monthlyTokens.toLocaleString()}` : "")
               );
+              for (const a of u.agents) {
+                const who = a.runtime === "internal" ? "" : c.dim(` [${a.runtime}${a.adapter ? `/${a.adapter}` : ""}]`);
+                const mins = a.minutes ? `  ${a.minutesMonth.toFixed(0)}/${a.minutes.toFixed(0)} min` : "";
+                console.log(
+                  `  ${a.name.padEnd(16)}${who}  ${a.tokensMonth.toLocaleString()} this month · ${a.tokens.toLocaleString()} total${mins}  ` +
+                    c.dim(`${a.tasksDone} done, ${a.tasksFailed} failed`)
+                );
+              }
             }
           );
         })

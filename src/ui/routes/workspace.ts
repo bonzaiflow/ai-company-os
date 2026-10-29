@@ -182,15 +182,23 @@ export const handleWorkspaceRoutes: RouteHandler = async ({
     const body = await readBody(req);
     const co = Company.open(root, String(body.company ?? ""));
     const add = Math.max(0, Number(body.addTokens) || 0);
-    if (!add) {
+    const setMonthly = body.monthlyTokens !== undefined;
+    if (!add && !setMonthly) {
       json(res, { error: "addTokens must be a positive number" }, 400);
       return true;
     }
     const meta = co.meta;
-    meta.budget.tokens += add;
+    if (add) {
+      meta.budget.tokens += add;
+      co.audit({ type: "budget.granted", ok: true, detail: `+${add.toLocaleString()} tokens` });
+    }
+    if (setMonthly) {
+      const monthly = Math.max(0, Number(body.monthlyTokens) || 0);
+      meta.budget.monthlyTokens = monthly || undefined;
+      co.audit({ type: "budget.monthly", ok: true, detail: monthly ? `${monthly.toLocaleString()} tokens/month` : "monthly cap removed" });
+    }
     writeJson(path.join(co.dir, "company.json"), meta);
-    co.audit({ type: "budget.granted", ok: true, detail: `+${add.toLocaleString()} tokens` });
-    json(res, { ok: true, budgetTokens: meta.budget.tokens });
+    json(res, { ok: true, budgetTokens: meta.budget.tokens, monthlyTokens: meta.budget.monthlyTokens ?? 0 });
     return true;
   }
 

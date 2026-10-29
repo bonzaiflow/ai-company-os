@@ -81,21 +81,14 @@ export async function tick(
   const agent = co.loadAgent(task.assignee);
   const meta = co.meta;
 
-  // per-agent budget: an exhausted agent hands work back to its manager
-  if (agent.budgetTokens) {
-    const spentByAgent = co.spent().byAgent?.[agent.name] ?? 0;
-    if (spentByAgent >= agent.budgetTokens) {
-      await gate(() => {
-        failTask(
-          co,
-          task,
-          agent.name,
-          `agent budget exhausted (${spentByAgent.toLocaleString()}/${agent.budgetTokens!.toLocaleString()} tokens) — owner can raise budgetTokens in the agent profile`
-        );
-        co.audit({ type: "budget.agent", ok: false, agent: agent.name, taskId: id });
-      });
-      return { status: "worked", taskId: id, detail: "agent budget exhausted" };
-    }
+  // per-agent budget (lifetime or monthly): an exhausted agent hands work back to its manager
+  const agentOver = co.agentBudgetExceeded(agent);
+  if (agentOver) {
+    await gate(() => {
+      failTask(co, task, agent.name, agentOver);
+      co.audit({ type: "budget.agent", ok: false, agent: agent.name, taskId: id });
+    });
+    return { status: "worked", taskId: id, detail: "agent budget exhausted" };
   }
   // external push agents run their own loop; the engine only starts and watches them
   if (isLeased(agent)) {

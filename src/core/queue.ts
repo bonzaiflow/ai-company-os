@@ -1,5 +1,5 @@
 import type { AgentSpec, Task } from "../types.js";
-import { agentIndex, countClaim, engineRuns, isLeased, leaseExpired, newLease, overDailyLimit } from "./agent-runtime.js";
+import { agentIndex, countClaim, endLease, engineRuns, isLeased, leaseExpired, newLease, overDailyLimit } from "./agent-runtime.js";
 import { PRIORITY_RANK } from "./priority.js";
 import type { Company } from "./store.js";
 import { retryOrFail } from "./task-lifecycle.js";
@@ -66,7 +66,7 @@ export function expireLeases(co: Company): string[] {
     for (const t of co.listTasks()) {
       if (t.status !== "running" || !t.lease || !leaseExpired(t.lease)) continue;
       const lease = t.lease;
-      t.lease = undefined;
+      endLease(co, t);
       co.audit({
         type: "lease.expired",
         ok: false,

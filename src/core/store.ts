@@ -9,6 +9,7 @@ import type {
   BudgetSpent,
   ChatMessage,
   CompanyMeta,
+  MonthSpent,
   Plan,
   Rank,
   Task,
@@ -110,6 +111,7 @@ export class Company {
       provider: meta.provider || undefined,
       model: meta.model || undefined,
       budgetTokens: meta.budgetTokens ? Number(meta.budgetTokens) : undefined,
+      monthlyBudgetTokens: meta.monthlyBudgetTokens ? Number(meta.monthlyBudgetTokens) : undefined,
       runtime: (meta.runtime as AgentSpec["runtime"]) || undefined,
       adapter: meta.adapter || undefined,
       cwd: meta.cwd || undefined,
@@ -131,6 +133,7 @@ export class Company {
       "\n";
     // runtime fields only appear in profiles that use them
     const runtime: Record<string, string> = {};
+    if (spec.monthlyBudgetTokens) runtime.monthlyBudgetTokens = String(spec.monthlyBudgetTokens);
     if (spec.runtime && spec.runtime !== "internal") runtime.runtime = spec.runtime;
     if (spec.adapter) runtime.adapter = spec.adapter;
     if (spec.cwd) runtime.cwd = spec.cwd;
@@ -605,15 +608,55 @@ export class Company {
   addSpent(tokens: number, toolCalls: number, agent?: string): void {
     return this.lock(() => {
       const s = this.spent();
-      s.tokens += tokens;
-      s.toolCalls += toolCalls;
-      if (agent && tokens > 0) {
-        s.byAgent = s.byAgent ?? {};
-        s.byAgent[agent] = (s.byAgent[agent] ?? 0) + tokens;
+      const m = (s.months ??= {})[monthKey()] ??= { tokens: 0, toolCalls: 0 };
+      for (const bucket of [s, m]) {
+        bucket.tokens += tokens;
+        bucket.toolCalls += toolCalls;
+        if (agent && tokens > 0) {
+          bucket.byAgent = bucket.byAgent ?? {};
+          bucket.byAgent[agent] = (bucket.byAgent[agent] ?? 0) + tokens;
+        }
       }
       writeJson(this.spentFile(), s);
     });
   }
+
+  /** Lease time of an external/manual agent (their own model cost is often unknown). */
+  addMinutes(agent: string, minutes: number): void {
+    if (!(minutes > 0)) return;
+    return this.lock(() => {
+      const s = this.spent();
+      const m = (s.months ??= {})[monthKey()] ??= { tokens: 0, toolCalls: 0 };
+      for (const bucket of [s, m]) {
+        bucket.minutesByAgent = bucket.minutesByAgent ?? {};
+        bucket.minutesByAgent[agent] = Math.round(((bucket.minutesByAgent[agent] ?? 0) + minutes) * 10) / 10;
+      }
+      writeJson(this.spentFile(), s);
+    });
+  }
+
+  /** Counters of one calendar month (default: the current one). */
+  monthSpent(month = monthKey()): MonthSpent {
+    return this.spent().months?.[month] ?? { tokens: 0, toolCalls: 0 };
+  }
+
+  /** Why this agent may not take more work right now (lifetime or monthly cap), else null. */
+  agentBudgetExceeded(agent: AgentSpec): string | null {
+    if (agent.budgetTokens) {
+      const used = this.spent().byAgent?.[agent.name] ?? 0;
+      if (used >= agent.budgetTokens) {
+        return `agent budget exhausted (${used.toLocaleString()}/${agent.budgetTokens.toLocaleString()} tokens) — owner can raise budgetTokens in the agent profile`;
+      }
+    }
+    if (agent.monthlyBudgetTokens) {
+      const used = this.monthSpent().byAgent?.[agent.name] ?? 0;
+      if (used >= agent.monthlyBudgetTokens) {
+        return `agent monthly budget exhausted (${used.toLocaleString()}/${agent.monthlyBudgetTokens.toLocaleString()} tokens in ${monthKey()}) — resets next month or raise monthlyBudgetTokens`;
+      }
+    }
+    return null;
+  }
+
 
   /** Persist changed meta fields (pause, schedule, policies, budget…). */
   saveMeta(patch: Partial<CompanyMeta>): CompanyMeta {
@@ -629,8 +672,17 @@ export class Company {
     const caps: BudgetCaps = this.meta.budget;
     const s = this.spent();
     if (caps.tokens > 0 && s.tokens >= caps.tokens) return `token cap ${caps.tokens} reached`;
+    if (caps.monthlyTokens && caps.monthlyTokens > 0) {
+      const used = s.months?.[monthKey()]?.tokens ?? 0;
+      if (used >= caps.monthlyTokens) return `monthly token cap ${caps.monthlyTokens} reached for ${monthKey()}`;
+    }
     return null;
   }
+}
+
+/** Calendar month of a timestamp in UTC, "YYYY-MM" — the budget window key. */
+export function monthKey(d = new Date()): string {
+  return d.toISOString().slice(0, 7);
 }
 
 /** Create a company directory tree from an approved plan. */

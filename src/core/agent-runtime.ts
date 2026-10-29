@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import type { AgentSpec, TaskLease } from "../types.js";
+import type { AgentSpec, Task, TaskLease } from "../types.js";
 import { readJson, writeJson } from "../util.js";
 import type { Company } from "./store.js";
 
@@ -70,4 +70,12 @@ export function countClaim(co: Company, agent: string): void {
 
 export function overDailyLimit(co: Company, agent: AgentSpec): boolean {
   return !!agent.maxTasksPerDay && claimsToday(co, agent.name) >= agent.maxTasksPerDay;
+}
+
+/** Clear a task's lease and book the time it was held to the holder. */
+export function endLease(co: Company, task: Task): void {
+  const lease = task.lease;
+  if (!lease) return;
+  task.lease = undefined;
+  co.addMinutes(lease.holder, (Date.now() - Date.parse(lease.claimedAt)) / 60_000);
 }

@@ -140,9 +140,12 @@ export function normalizePlan(raw: Plan): Plan {
       ...(a.approveResults ? { approveResults: true } : {}),
       ...(a.toolMode === "company" || a.toolMode === "native" ? { toolMode: a.toolMode } : {}),
       ...(a.tokenEnv ? { tokenEnv: a.tokenEnv } : {}),
+      ...(a.budgetTokens ? { budgetTokens: Number(a.budgetTokens) } : {}),
+      ...(a.monthlyBudgetTokens ? { monthlyBudgetTokens: Number(a.monthlyBudgetTokens) } : {}),
     })),
     budget: {
       tokens: raw.budget?.tokens || 500_000,
+      ...(raw.budget?.monthlyTokens ? { monthlyTokens: Number(raw.budget.monthlyTokens) } : {}),
     },
     rootTasks: (raw.rootTasks ?? []).filter((t) => t.title),
     todos: (raw.todos ?? []).filter(Boolean),

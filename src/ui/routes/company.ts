@@ -8,6 +8,7 @@ import { listCheckins } from "../../core/checkin.js";
 import { exportCompanyZip, listDataExports, resolveDataExportFile, type CompanyExportMode } from "../../core/export.js";
 import { listApprovals } from "../../core/governance.js";
 import { Company } from "../../core/store.js";
+import { usageReport } from "../../core/usage.js";
 import { effectiveAgentLlm } from "../../llm/resolve.js";
 import type { ChatMessage } from "../../types.js";
 import { slugify } from "../../util.js";
@@ -64,6 +65,7 @@ export const handleCompanyRoutes: RouteHandler = async ({ root, req, res, url })
     json(res, {
       meta: co.meta,
       spent: co.spent(),
+      usage: usageReport(co),
       agents,
       tasks: co.listTasks(),
       queue: co.queue(),

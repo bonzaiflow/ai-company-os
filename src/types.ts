@@ -21,6 +21,8 @@ export interface AgentSpec {
   model?: string;
   /** per-agent token cap; agent stops receiving tasks when exceeded */
   budgetTokens?: number;
+  /** per-agent token cap per calendar month (UTC) */
+  monthlyBudgetTokens?: number;
   /** default internal */
   runtime?: AgentRuntime;
   /** external push: name from ai-company-os.json → agentRuntimes */
@@ -106,6 +108,8 @@ export interface CompanyTarget {
 
 export interface BudgetCaps {
   tokens: number;
+  /** optional cap per calendar month (UTC); 0/absent = no monthly window */
+  monthlyTokens?: number;
   /** Legacy field — no longer enforced */
   hours?: number;
 }
@@ -116,6 +120,17 @@ export interface BudgetSpent {
   startedAt: string;
   /** tokens per agent, for per-agent budget enforcement */
   byAgent?: Record<string, number>;
+  /** wall-clock minutes external/manual agents held tasks (lease time) */
+  minutesByAgent?: Record<string, number>;
+  /** the same counters per calendar month (UTC, "YYYY-MM") — monthly budget windows */
+  months?: Record<string, MonthSpent>;
+}
+
+export interface MonthSpent {
+  tokens: number;
+  toolCalls: number;
+  byAgent?: Record<string, number>;
+  minutesByAgent?: Record<string, number>;
 }
 
 export interface Approval {

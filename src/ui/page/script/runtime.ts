@@ -307,7 +307,9 @@ function renderAgentPanel() {
   body.style.overflowY = 'auto';
 
   if (selectedTab === 'overview') {
-    body.appendChild(renderAgentLlmEditor(a));
+    var usage = renderAgentUsage(a);
+    if (usage) body.appendChild(usage);
+    if (a.runtime !== 'external' && a.runtime !== 'manual') body.appendChild(renderAgentLlmEditor(a));
     body.appendChild(el('pre', 'doc', a.profile || '(no profile)'));
   } else if (selectedTab === 'tasks') {
     var mine = state.tasks.filter(function (t) { return t.assignee === a.name; });
@@ -335,6 +337,31 @@ function renderAgentPanel() {
     if (!evts.length) body.appendChild(el('div', 'muted', 'no events yet'));
     evts.slice().reverse().forEach(function (e) { body.appendChild(evtRow(e)); });
   }
+}
+
+/** Cost of one agent: tokens (LLM calls or reported by external agents) and,
+ * for external/manual agents, the minutes they held tasks. */
+function renderAgentUsage(a) {
+  var u = state && state.usage && state.usage.agents.find(function (x) { return x.name === a.name; });
+  if (!u) return null;
+  var box = el('div', 'agent-llm');
+  box.appendChild(el('div', 'agent-llm-title', 'Usage'));
+  function line(k, v) {
+    var r = el('div', 'agent-llm-row');
+    r.style.justifyContent = 'space-between';
+    r.appendChild(el('span', 'muted', k));
+    r.appendChild(el('span', 'mono', v));
+    box.appendChild(r);
+  }
+  var month = state.usage.month;
+  line('tokens ' + month, u.tokensMonth.toLocaleString() + (u.monthlyBudgetTokens ? ' / ' + u.monthlyBudgetTokens.toLocaleString() : ''));
+  line('tokens total', u.tokens.toLocaleString() + (u.budgetTokens ? ' / ' + u.budgetTokens.toLocaleString() : ''));
+  if (u.runtime !== 'internal' || u.minutes) {
+    line('task time ' + month, Math.round(u.minutesMonth) + ' min');
+    line('task time total', Math.round(u.minutes) + ' min');
+  }
+  line('tasks', u.tasksDone + ' done \u00b7 ' + u.tasksFailed + ' failed');
+  return box;
 }
 
 function renderAgentLlmEditor(a) {

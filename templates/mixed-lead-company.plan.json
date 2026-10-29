@@ -1,0 +1,75 @@
+{
+  "name": "Mixed Lead Company",
+  "goal": "Build a verified list of 50 real-estate developers and agencies in Prishtina (company, current project, phone, email, website) and draft outreach for owner approval.",
+  "approach": "A strong external chief plans and synthesizes; a small local model does the bulk discovery; an external verifier checks websites and contact data; the owner approves drafts before anything is sent. Template for mixing runtimes — swap adapters to what you have installed (see docs/AGENT-CONTRACT.md).",
+  "agents": [
+    {
+      "name": "Chief",
+      "role": "Lead strategist",
+      "rank": "chief",
+      "responsibilities": [
+        "Split the goal into discovery, verification and outreach drafts",
+        "Synthesize subtask results into data/report.md with counts and gaps"
+      ],
+      "tools": [],
+      "skills": ["delegation", "reporting"],
+      "runtime": "external",
+      "adapter": "claude-code",
+      "maxMinutesPerTask": 30,
+      "maxTasksPerDay": 20
+    },
+    {
+      "name": "LeadScout",
+      "role": "Lead discovery (local model)",
+      "rank": "worker",
+      "manager": "Chief",
+      "responsibilities": [
+        "Find developers and agencies via search and public listings",
+        "Store rows in data/main.db table leads (name, project, city, phone, email, website, source)"
+      ],
+      "tools": ["search", "fetch", "sqlite"],
+      "skills": ["web-research", "data-entry"],
+      "monthlyBudgetTokens": 2000000
+    },
+    {
+      "name": "Verifier",
+      "role": "Contact verification",
+      "rank": "worker",
+      "manager": "Chief",
+      "responsibilities": [
+        "Open each lead's website, confirm the company builds or sells in Kosovo, fix or flag contact data",
+        "Mark rows verified=1 or note why not in data/main.db"
+      ],
+      "tools": [],
+      "skills": [],
+      "runtime": "external",
+      "adapter": "codex",
+      "maxMinutesPerTask": 45
+    },
+    {
+      "name": "Owner",
+      "role": "Approves outreach",
+      "rank": "worker",
+      "manager": "Chief",
+      "responsibilities": [
+        "Review outreach drafts in data/outreach/ and approve or request changes"
+      ],
+      "tools": [],
+      "skills": [],
+      "runtime": "manual",
+      "approveResults": true
+    }
+  ],
+  "budget": { "tokens": 5000000, "monthlyTokens": 3000000 },
+  "rootTasks": [
+    {
+      "title": "50 verified developer and agency leads in Prishtina",
+      "description": "Plan the work across LeadScout (discovery), Verifier (checks) and Owner (approves outreach drafts). Deliver data/main.db table leads with verified rows and data/report.md. Nothing is sent to anyone — drafts only."
+    }
+  ],
+  "deliverables": [
+    { "file": "data/main.db", "kind": "sqlite", "description": "leads table with verified flag" },
+    { "file": "data/report.md", "kind": "md", "description": "counts, sources, gaps" }
+  ],
+  "storage": [{ "db": "main.db", "table": "leads", "purpose": "developers and agencies" }]
+}

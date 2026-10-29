@@ -43,6 +43,7 @@ import { companyState, listAgentFiles } from "./inspect.js";
 const ROOT = process.env.AI_COMPANY_OS_ROOT ? path.resolve(process.env.AI_COMPANY_OS_ROOT) : process.cwd();
 loadDotEnv(ROOT);
 const BUNDLED_SKILLS = path.resolve(fileURLToPath(import.meta.url), "../../../skills");
+const TEMPLATES = path.resolve(fileURLToPath(import.meta.url), "../../../templates");
 const DEFAULT_RETRY_HEADROOM = 2;
 const CTX: CliCtx = { root: ROOT, bundledSkills: BUNDLED_SKILLS, json: false };
 
@@ -200,14 +201,36 @@ function launchPlan(plan: Plan, provider?: string, model?: string, planFile?: st
 
 program
   .command("launch")
-  .description("launch a company from a saved plan file")
-  .argument("<planFile>")
+  .description("launch a company from a saved plan file or a bundled template (see `templates`)")
+  .argument("<planFile>", "plan JSON path, or a template name like mixed-lead-company")
   .option("-p, --provider <name>", "default provider for this company")
   .option("-m, --model <model>", "default model for this company")
-  .action((planFile: string, opts) => {
+  .action((planArg: string, opts) => {
+    const template = path.join(TEMPLATES, `${planArg}.plan.json`);
+    const planFile = !fs.existsSync(path.resolve(planArg)) && fs.existsSync(template) ? template : planArg;
     const plan = readJson<Plan | null>(path.resolve(planFile), null);
     if (!plan) return program.error(`cannot read plan file ${planFile}`);
     launchPlan(plan, opts.provider, opts.model, planFile);
+  });
+
+program
+  .command("templates")
+  .description("list bundled company templates (launch one with `launch <name>`)")
+  .option("--json", "JSON output")
+  .action((opts) => {
+    if (opts.json) setJsonMode(true);
+    const list = fs.existsSync(TEMPLATES)
+      ? fs
+          .readdirSync(TEMPLATES)
+          .filter((f) => f.endsWith(".plan.json"))
+          .map((f) => {
+            const p = readJson<Plan | null>(path.join(TEMPLATES, f), null);
+            return { name: f.replace(/\.plan\.json$/, ""), title: p?.name ?? "", goal: p?.goal ?? "" };
+          })
+      : [];
+    out({ templates: list }, () => {
+      for (const t of list) console.log(`${c.bold(t.name)}  ${c.dim(t.goal.slice(0, 110))}`);
+    });
   });
 
 program

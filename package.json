@@ -9,7 +9,8 @@
   },
   "files": [
     "dist",
-    "skills"
+    "skills",
+    "templates"
   ],
   "scripts": {
     "build": "tsc",

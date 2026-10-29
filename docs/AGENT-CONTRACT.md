@@ -167,6 +167,13 @@ Claude Code example (remote MCP with header):
 claude mcp add --transport http company-verifier https://agents.example.com/mcp/acme --header "Authorization: Bearer $AICOS_TOKEN_VERIFIER"
 ```
 
+## Template
+
+`ai-company-os templates` lists bundled company templates; `ai-company-os launch mixed-lead-company`
+starts one — an external chief (claude-code push), a local-model scout, an external verifier
+(codex push) and you as manual approver, with a monthly cap. Edit the adapters to what you have
+installed (`set-runtime`), or copy `templates/mixed-lead-company.plan.json` as a starting point.
+
 ## Profile fields
 
 ```yaml
@@ -176,6 +183,7 @@ cwd: ~/privat/patund         # push run directory (needs allowedCwds)
 leaseMinutes: 30
 maxTasksPerDay: 20           # claims per UTC day (pull and push)
 maxMinutesPerTask: 45        # hard cap: lease end / process kill
+monthlyBudgetTokens: 2000000 # per calendar month (UTC); budgetTokens stays the lifetime cap
 approveResults: true         # owner reviews the result before done
 toolMode: native             # native (own tools) | company (brief says: only ai-company-os tools)
 tokenEnv: AICOS_TOKEN_X      # reserved for remote/HTTP access
@@ -199,6 +207,11 @@ ai-company-os set-runtime Chief    -c SLUG --runtime external --adapter ""      
 - **Telegram**: with the Telegram connector, each new ready task of a manual agent is announced once.
 - **Budgets**: reported tokens (`--tokens`, or parsed from the adapter) count against company and
   per-agent caps; `maxTasksPerDay` and `maxMinutesPerTask` bound agents that report nothing.
+  Monthly windows reset every calendar month (UTC): `budget --monthly <tokens>` for the company,
+  `monthlyBudgetTokens:` per agent.
+- **Costs per agent**: `ai-company-os budget` (and the Usage box in an agent's Overview tab) shows
+  tokens this month / total, the minutes external and manual agents held tasks (lease time — the
+  cost signal for agents whose own model usage is unknown) and done/failed counts.
 
 ## Concurrency
 

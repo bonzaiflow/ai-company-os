@@ -14,6 +14,8 @@ import { decideApproval } from "./core/governance.js";
 import { claimNext, delegateHeld, finishTask, WorkError } from "./core/lease.js";
 import { expireLeases } from "./core/queue.js";
 import { runLoop } from "./core/runtime.js";
+import { usageReport } from "./core/usage.js";
+import { normalizePlan } from "./planner.js";
 import { serveAgents } from "./mcp/remote.js";
 import { scaffoldCompany } from "./core/store.js";
 import { resolveToolName, toolsFor } from "./core/tools.js";
@@ -216,5 +218,30 @@ const remoteDone = await call(
 );
 assert.equal(((await remoteDone.json()) as { status: string }).status, "review", "remote done respects approveResults");
 remote.close();
+
+// ---- phase 7: lease minutes, monthly windows, mixed template ----
+const timed = ext.createTask({ title: "Timed", description: "x", assignee: "Lead", createdBy: "user" });
+ext.enqueue(timed.id);
+const tc = claimNext(ext, "Lead")!;
+tc.task.lease = { ...tc.lease, claimedAt: new Date(Date.now() - 12 * 60_000).toISOString() };
+ext.saveTask(tc.task);
+finishTask(ext, tc.task.id, tc.lease.id, "took a while", { tokens: 500 });
+const leadUsage = usageReport(ext).agents.find((a) => a.name === "Lead")!;
+assert.ok(leadUsage.minutes >= 11.9 && leadUsage.minutesMonth >= 11.9, "lease minutes booked to the holder");
+assert.ok(leadUsage.tokensMonth >= 500, "reported tokens land in the month bucket");
+ext.saveMeta({ budget: { ...ext.meta.budget, monthlyTokens: 400 } });
+assert.match(ext.budgetExceeded() ?? "", /monthly token cap/, "monthly window blocks once used up");
+ext.saveMeta({ budget: { ...ext.meta.budget, monthlyTokens: undefined } });
+const leadSpec = ext.loadAgent("Lead");
+leadSpec.monthlyBudgetTokens = 100;
+ext.saveAgent(leadSpec);
+assert.match(ext.agentBudgetExceeded(ext.loadAgent("Lead")) ?? "", /monthly budget/, "per-agent monthly cap");
+
+const tpl = JSON.parse(fs.readFileSync(path.resolve(fileURLToPath(import.meta.url), "../../templates/mixed-lead-company.plan.json"), "utf8")) as Plan;
+const mixed = scaffoldCompany(root, normalizePlan(tpl), [bundledSkills], "mock");
+const runtimes = Object.fromEntries(mixed.listAgents().map((a) => [a.name, `${a.runtime ?? "internal"}${a.adapter ? "/" + a.adapter : ""}`]));
+assert.deepEqual(runtimes, { Chief: "external/claude-code", LeadScout: "internal", Owner: "manual", Verifier: "external/codex" }, "template keeps runtimes");
+assert.equal(mixed.meta.budget.monthlyTokens, 3_000_000, "template keeps the monthly cap");
+assert.equal(mixed.loadAgent("Owner").approveResults, true);
 
 console.log("\nSMOKE TEST PASSED ✓  (workspace: " + root + ")");

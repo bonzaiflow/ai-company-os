@@ -1,5 +1,6 @@
 import type { Task } from "../types.js";
 import { truncate } from "../util.js";
+import { endLease } from "./agent-runtime.js";
 import type { Company } from "./store.js";
 
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -87,7 +88,7 @@ export function completeTask(co: Company, task: Task, agent: string, result: str
 }
 
 function completeTaskLocked(co: Company, task: Task, agent: string, result: string): void {
-  task.lease = undefined;
+  endLease(co, task);
   if (continueTowardTarget(co, task, agent, result)) return;
 
   task.status = "done";
@@ -108,7 +109,7 @@ export function failTask(co: Company, task: Task, agent: string, reason: string)
 }
 
 function failTaskLocked(co: Company, task: Task, agent: string, reason: string): void {
-  task.lease = undefined;
+  endLease(co, task);
   task.status = "failed";
   task.result = `FAILED: ${reason}`;
   co.saveTask(task);
@@ -131,7 +132,7 @@ export function retryOrFail(
 }
 
 function retryOrFailLocked(co: Company, task: Task, agent: string, reason: string): "retried" | "failed" {
-  task.lease = undefined;
+  endLease(co, task);
   const attempts = (task.attempts ?? 0) + 1;
   const max = task.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   task.attempts = attempts;

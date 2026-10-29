@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { AgentSpec, Approval, Task, TaskLease } from "../types.js";
 import { truncate } from "../util.js";
-import { claimsToday, countClaim, isLeased, leaseExpired, leaseMinutesFor, newLease } from "./agent-runtime.js";
+import { claimsToday, countClaim, endLease, isLeased, leaseExpired, leaseMinutesFor, newLease } from "./agent-runtime.js";
 import { RESULT_REVIEW, requestApproval } from "./governance.js";
 import { expireLeases, readyCandidates } from "./queue.js";
 import type { Company } from "./store.js";
@@ -66,6 +66,8 @@ export function claimNext(co: Company, name: string, via: "pull" | "manual" = "p
     if (co.meta.paused) throw new WorkError("company is paused", "blocked");
     const over = co.budgetExceeded();
     if (over) throw new WorkError(`budget: ${over}`, "blocked");
+    const agentOver = co.agentBudgetExceeded(agent);
+    if (agentOver) throw new WorkError(agentOver, "blocked");
     if (agent.maxTasksPerDay && claimsToday(co, name) >= agent.maxTasksPerDay) {
       throw new WorkError(`${name} reached maxTasksPerDay (${agent.maxTasksPerDay})`, "blocked");
     }
@@ -144,7 +146,7 @@ export function releaseTask(co: Company, taskId: string, leaseId: string, reason
   return co.lock(() => {
     const task = heldTask(co, taskId, leaseId);
     const holder = task.lease!.holder;
-    task.lease = undefined;
+    endLease(co, task);
     task.status = "queued";
     co.saveTask(task);
     co.enqueueFront(task.id);
@@ -172,7 +174,7 @@ export function finishTask(
     if (opts.tokens && opts.tokens > 0) co.addSpent(opts.tokens, 0, agent.name);
     co.appendThought(agent.name, task.id, `**completed (${lease.via}${opts.via ? `, ${opts.via}` : ""}):** ${truncate(result, 500)}`);
     if (agent.approveResults) {
-      task.lease = undefined;
+      endLease(co, task);
       task.status = "waiting";
       co.saveTask(task);
       const approval = requestApproval(co, agent.name, task.id, RESULT_REVIEW, { result });
@@ -232,7 +234,7 @@ export function ownerReport(co: Company, taskId: string, result: string, failed 
     } else if (task.status !== "running") {
       throw new WorkError(`${taskId} is ${task.status}`, "input");
     }
-    task.lease = undefined;
+    endLease(co, task);
     task.status = "running";
     co.appendThought(agent.name, task.id, `**reported by owner:** ${truncate(result, 500)}`);
     if (failed) retryOrFail(co, task, agent.name, result);

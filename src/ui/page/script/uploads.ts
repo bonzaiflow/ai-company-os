@@ -438,6 +438,12 @@ function renderBudget(spent, cap) {
   document.getElementById('tokTxt').textContent =
     remaining.toLocaleString() + ' / ' + cap.toLocaleString();
   document.getElementById('tokBar').style.width = cap ? (remaining / cap * 100) + '%' : '0%';
+  var u = state && state.usage;
+  if (u && u.monthlyTokens) {
+    document.getElementById('tokTxt').textContent +=
+      ' \u00b7 ' + u.month + ': ' + u.tokensMonth.toLocaleString() + ' / ' + u.monthlyTokens.toLocaleString();
+    if (u.tokensMonth >= u.monthlyTokens) wrap.className = 'bar depleted';
+  }
 }
 
 function grantTokens() {
@@ -479,6 +485,31 @@ function grantTokens() {
         quick.appendChild(b);
       });
       body.appendChild(quick);
+
+      // monthly window: a cap that resets every calendar month (UTC)
+      var u = state && state.usage;
+      body.appendChild(el('div', 'muted', 'Monthly cap (tokens per calendar month, 0 = none). This month so far: ' +
+        (u ? u.tokensMonth.toLocaleString() : '0') + '.'));
+      var mrow = el('div');
+      mrow.style.cssText = 'display:flex;gap:0.5rem;margin:0.5rem 0 0;align-items:center';
+      var minput = el('input');
+      minput.type = 'text';
+      minput.className = 'mono';
+      minput.style.flex = '1';
+      minput.value = String(u && u.monthlyTokens ? u.monthlyTokens : 0);
+      mrow.appendChild(minput);
+      var mbtn = el('button', 'btn ghost', 'Set monthly cap');
+      mbtn.onclick = function () {
+        var m = parseInt(minput.value.replace(/[^0-9]/g, ''), 10) || 0;
+        mbtn.disabled = true;
+        fetch('/api/budget', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ company: companySlug, monthlyTokens: m })
+        }).then(function () { closeModal(); refresh(); });
+      };
+      mrow.appendChild(mbtn);
+      body.appendChild(mrow);
       input.focus();
       input.select();
     }
