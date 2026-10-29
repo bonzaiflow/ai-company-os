@@ -84,6 +84,18 @@ Full command map: [CLI.md](./CLI.md).
 | `agent_llm` | `agent <name>` |
 | `set_agent_llm` | `set-llm <name> -p … -m …` / `--clear` |
 
+### External agents (work contract)
+
+| Tool | CLI equivalent |
+|---|---|
+| `work_next` | `work next --as <name> [--wait N]` |
+| `work_brief` / `work_heartbeat` | `work brief` / `work heartbeat` |
+| `work_done` / `work_fail` / `work_release` | `work done` / `work fail` / `work release` |
+| `work_delegate` / `work_message` / `work_inbox` | `work delegate` / `work message` / `work inbox` |
+| `set_agent_runtime` | `set-runtime <name> --runtime … [--adapter …]` |
+
+Set `AI_COMPANY_OS_AGENT` in the server's `env` to pin which org-chart agent this host is — one MCP entry per agent. See [AGENT-CONTRACT.md](./AGENT-CONTRACT.md).
+
 ### Mixed sources example
 
 Pin different providers on one company (defaults unchanged until you pin):

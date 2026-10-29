@@ -137,6 +137,70 @@ function renderTaskModal(d, isUpdate, opts) {
       desc.textContent = t.description || '(none)';
       body.appendChild(desc);
 
+      var owner = (state && state.agents || []).find(function (a) { return a.name === t.assignee; });
+      var external = owner && (owner.runtime === 'external' || owner.runtime === 'manual');
+      if (t.lease) {
+        body.appendChild(el('h2', 'sec', 'External agent'));
+        var lease = el('div', 'muted');
+        lease.style.fontSize = '0.82rem';
+        lease.textContent = 'held by ' + t.lease.holder + ' (' + t.lease.via + ') \u00b7 lease ' + t.lease.id +
+          ' \u00b7 until ' + new Date(t.lease.until).toLocaleString() +
+          (t.lease.heartbeatAt ? ' \u00b7 last heartbeat ' + new Date(t.lease.heartbeatAt).toLocaleTimeString() : '');
+        body.appendChild(lease);
+        var relRow = el('div');
+        relRow.style.marginTop = '0.5rem';
+        var relBtn = el('button', 'btn ghost', '\u21a9 Take back');
+        relBtn.title = 'End the lease and put the task back at the front of the queue (no attempt counted)';
+        relBtn.onclick = function () {
+          relBtn.disabled = true;
+          fetch('/api/task/release', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ company: companySlug, id: t.id })
+          }).then(function (r) { return r.json(); }).then(function (d) {
+            if (d.error) flashStrip(d.error);
+            openTaskModal(t.id, opts); refresh();
+          });
+        };
+        relRow.appendChild(relBtn);
+        body.appendChild(relRow);
+      }
+      if (external && (t.status === 'queued' || t.status === 'running')) {
+        body.appendChild(el('h2', 'sec', owner.runtime === 'manual' ? 'Enter the result' : 'Enter the result yourself'));
+        body.appendChild(el('div', 'muted', owner.runtime === 'manual'
+          ? 'Paste the answer from the chat or write what was done. Copy the brief with: ai-company-os work next --as ' + owner.name
+          : 'Only if the agent cannot report itself.'));
+        var ta = document.createElement('textarea');
+        ta.rows = 5;
+        ta.style.width = '100%';
+        ta.style.marginTop = '0.4rem';
+        ta.style.fontFamily = 'inherit';
+        ta.placeholder = 'result, with paths of anything produced';
+        body.appendChild(ta);
+        var repRow = el('div');
+        repRow.style.marginTop = '0.4rem';
+        repRow.style.display = 'flex';
+        repRow.style.gap = '0.4rem';
+        function report(failed) {
+          if (!ta.value.trim()) { flashStrip('write the result first'); return; }
+          fetch('/api/task/report', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ company: companySlug, id: t.id, result: ta.value, failed: failed })
+          }).then(function (r) { return r.json(); }).then(function (d) {
+            if (d.error) flashStrip(d.error);
+            openTaskModal(t.id, opts); refresh();
+          });
+        }
+        var okBtn = el('button', 'btn', '\u2713 Mark done');
+        okBtn.onclick = function () { report(false); };
+        var failBtn = el('button', 'btn ghost', '\u2717 Mark failed');
+        failBtn.onclick = function () { report(true); };
+        repRow.appendChild(okBtn);
+        repRow.appendChild(failBtn);
+        body.appendChild(repRow);
+      }
+
       if (t.result) {
         body.appendChild(el('h2', 'sec', t.status === 'failed' ? 'Why it failed' : 'Result'));
         body.appendChild(el('div', 'result-box ' + (t.status === 'failed' ? 'failed' : 'done'), t.result));

@@ -32,6 +32,26 @@ Same company, one `tick`: each assignee uses their own source. Unset agents keep
 
 ---
 
+## External agents (`work …`)
+
+Agents with `runtime: external | manual` (Claude Code, Codex, Cursor, a chat, you) work tasks through a lease-based contract — full spec in **[AGENT-CONTRACT.md](./AGENT-CONTRACT.md)**.
+
+```bash
+ai-company-os set-runtime Verifier -c acme --runtime external --adapter codex   # push: engine starts codex per task
+ai-company-os set-runtime Chief -c acme --runtime external                      # pull: the agent calls work next
+ai-company-os set-runtime Owner -c acme --runtime manual --approve-results true
+
+ai-company-os --json work next -c acme --as Chief            # claim → { task, lease, brief }
+ai-company-os --json work done TASK-0042 -c acme --lease <id> --result "…"
+ai-company-os --json work delegate TASK-0042 -c acme --lease <id> --subtasks @subtasks.json
+ai-company-os --json work heartbeat|fail|release TASK-0042 -c acme --lease <id> …
+ai-company-os --json work message|inbox -c acme --as Chief …
+```
+
+`AI_COMPANY_OS_ROOT` makes every command work from any directory.
+
+---
+
 ## Command map
 
 ### Workspace & config

@@ -20,6 +20,8 @@ export function registerConfigCommands(program: Command, ctx: CliCtx): void {
           roles: cfg.roles ?? {},
           models: cfg.models ?? {},
           skills: skillNames(ctx.root, ctx.bundledSkills),
+          agentRuntimes: cfg.agentRuntimes ?? {},
+          allowedCwds: cfg.allowedCwds ?? [],
           providerDetails: Object.fromEntries(
             Object.entries(cfg.providers)
               .filter(([, p]) => p.type !== "mock")

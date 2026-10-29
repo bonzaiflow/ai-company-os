@@ -75,7 +75,7 @@ function listSkillExtras(skillDir: string): string[] {
   return extras.sort();
 }
 
-function loadSkills(co: Company, names: string[]): string {
+export function loadSkills(co: Company, names: string[]): string {
   const parts: string[] = [];
   for (const name of names) {
     const skillDir = path.join(co.dir, "skills", name);

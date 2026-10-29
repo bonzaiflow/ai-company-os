@@ -191,7 +191,12 @@ function nodeFor(a, opts) {
   body.appendChild(el('span', 'org-rank ' + a.rank, a.rank));
   body.appendChild(el('div', 'org-name', a.name));
   body.appendChild(el('div', 'org-role', a.role));
-  if (a.llm && a.llm.provider) {
+  var leased = a.runtime === 'external' || a.runtime === 'manual';
+  if (leased) {
+    // external agents run their own model; show how they are driven instead
+    var rtLabel = a.runtime === 'manual' ? 'manual \u00b7 owner/chat' : (a.adapter ? 'push \u00b7 ' + a.adapter : 'external \u00b7 pull');
+    body.appendChild(el('div', 'org-llm pinned org-runtime', rtLabel));
+  } else if (a.llm && a.llm.provider) {
     var srcLabel = a.llm.source === 'agent' ? a.llm.provider : (a.llm.provider + ' · default');
     body.appendChild(el('div', 'org-llm' + (a.llm.source === 'agent' ? ' pinned' : ''), srcLabel));
   }

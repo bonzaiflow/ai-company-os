@@ -4,7 +4,11 @@ Paperclip (github.com/paperclipai/paperclip, 73k★) is the incumbent "AI compan
 org charts, tickets, budgets, governance, heartbeats — as a control plane for
 **bring-your-own agents** (Claude Code, Codex, HTTP bots) over Node + PostgreSQL.
 
-ai-company-os wins by NOT being that. Four deliberate bets:
+ai-company-os wins by NOT being *only* that. Since 2026-10 it is **bring your own agent — under
+control**: small local models do the perpetual grind, external agents (Claude Code, Codex,
+Cursor, chats, humans) take chief and specialist seats per task through a neutral lease contract
+([docs/AGENT-CONTRACT.md](../docs/AGENT-CONTRACT.md)) — and every one of them sits behind the same
+leases, budgets, time caps, result reviews and hash-chained audit. Four deliberate bets:
 
 ## 1. Perpetuity (built-in, not bring-your-own)
 Paperclip heartbeats wake external runtimes; each agent is a cloud-model process
@@ -42,5 +46,6 @@ assumes smart agents; we manufacture usable behavior from 4–12b local models.
 
 ## What to adopt from them later
 - Goal ancestry on every task (chain up to the mission)
-- Plugin agent types (let a Claude Code instance be a ai-company-os "agent")
+- ~~Plugin agent types (let a Claude Code instance be a ai-company-os "agent")~~ — done as
+  `runtime: external | manual` with pull, push adapters and owner review
 - Monthly budget windows (ours are lifetime caps + grants)

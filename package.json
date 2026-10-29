@@ -1,7 +1,7 @@
 {
   "name": "ai-company-os",
   "version": "0.1.0",
-  "description": "Agent-swarm orchestrator for small local models — plan with an LLM, launch a company of agents, watch them work.",
+  "description": "Agent-swarm orchestrator for small local models \u2014 plan with an LLM, launch a company of agents, watch them work.",
   "type": "module",
   "bin": {
     "ai-company-os": "dist/cli.js",
@@ -17,8 +17,9 @@
     "dev:ui": "node scripts/dev-ui.mjs",
     "smoke": "npm run build && node dist/smoke.js",
     "check:boundaries": "node scripts/check-boundaries.mjs",
-    "check": "npm run build && npm run check:boundaries && npm run smoke",
-    "mcp": "npm run build && node dist/mcp.js"
+    "check": "npm run build && npm run check:boundaries && npm run smoke && node scripts/race-test.mjs",
+    "mcp": "npm run build && node dist/mcp.js",
+    "test:race": "npm run build && node scripts/race-test.mjs"
   },
   "engines": {
     "node": ">=22.5"

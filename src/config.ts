@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AiCompanyOsConfig } from "./types.js";
+import type { AgentRuntimeConfig, AiCompanyOsConfig } from "./types.js";
 import { readJson, writeJson } from "./util.js";
 
 // NOTE: no default `roles` here on purpose — role overrides must come from an
@@ -43,6 +43,34 @@ const DEFAULT_CONFIG: AiCompanyOsConfig = {
   },
 };
 
+/** Push presets for external agents (profile `adapter: <name>`). Override or
+ * add your own under agentRuntimes in ai-company-os.json. claude-code and
+ * cursor flags were checked against the installed CLIs; codex and gemini
+ * follow their docs — run `ai-company-os doctor` after installing them. */
+export const DEFAULT_AGENT_RUNTIMES: Record<string, AgentRuntimeConfig> = {
+  "claude-code": {
+    type: "command",
+    argv: ["claude", "-p", "--output-format", "json", "--permission-mode", "acceptEdits", "{prompt}"],
+    usage: "claude-json",
+    onExit: "stdout",
+  },
+  cursor: {
+    type: "command",
+    argv: ["cursor-agent", "-p", "--output-format", "text", "--trust", "{prompt}"],
+    onExit: "stdout",
+  },
+  codex: {
+    type: "command",
+    argv: ["codex", "exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "--output-last-message", "{outputFile}", "{prompt}"],
+    onExit: "stdout",
+  },
+  gemini: {
+    type: "command",
+    argv: ["gemini", "-p", "{prompt}"],
+    onExit: "stdout",
+  },
+};
+
 export function configPath(root: string): string {
   const preferred = path.join(root, "ai-company-os.json");
   const legacy = path.join(root, "dmfo.json");
@@ -72,6 +100,12 @@ export function loadConfig(root: string): AiCompanyOsConfig {
       ...user.providers,
       ...project.providers,
     },
+    agentRuntimes: {
+      ...DEFAULT_AGENT_RUNTIMES,
+      ...user.agentRuntimes,
+      ...project.agentRuntimes,
+    },
+    allowedCwds: [...(user.allowedCwds ?? []), ...(project.allowedCwds ?? [])],
   };
 }
 

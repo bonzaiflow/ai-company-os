@@ -1,14 +1,18 @@
+import path from "node:path";
+import { truncate } from "../../util.js";
+import { readyCandidates } from "../queue.js";
 import type { Company } from "../store.js";
 import { loadState, saveState } from "./state.js";
 import { telegramToken, tgSendMessage, type InlineKeyboard } from "./telegram-api.js";
 
-export type OwnerNudgeKind = "queue_empty" | "replan" | "stall" | "approvals";
+export type OwnerNudgeKind = "queue_empty" | "replan" | "stall" | "approvals" | "manual";
 
 const DEBOUNCE_MS: Record<OwnerNudgeKind, number> = {
   queue_empty: 30 * 60_000,
   replan: 10 * 60_000,
   stall: 15 * 60_000,
   approvals: 20 * 60_000,
+  manual: 0, // one note per task, deduped by task id instead
 };
 
 function nudgeKeyboard(paused: boolean): InlineKeyboard {
@@ -125,5 +129,36 @@ export function stallNudgeText(co: Company, detail: string): string {
     detail.slice(0, 500),
     "",
     "Ideas: broaden the goal, grant budget, clear blockers, or chat the chief to replan.",
+  ].join("\n");
+}
+
+/** Tell the owner about new ready tasks of manual agents (a human or a chat
+ * window) — once per task. Returns how many notes went out. */
+export async function notifyManualWork(co: Company): Promise<number> {
+  if (!co.meta.connectors?.telegram) return 0;
+  const manual = new Set(co.listAgents().filter((a) => a.runtime === "manual").map((a) => a.name));
+  if (!manual.size) return 0;
+  const seen = new Set(loadState(co).manualNotified ?? []);
+  const fresh = readyCandidates(co).filter((t) => manual.has(t.assignee) && !seen.has(t.id));
+  let sent = 0;
+  for (const t of fresh) {
+    if (await notifyOwner(co, "manual", manualWorkText(co, t), { force: true })) sent++;
+    seen.add(t.id);
+  }
+  if (fresh.length) {
+    const st = loadState(co);
+    saveState(co, { ...st, manualNotified: [...seen].slice(-500) });
+  }
+  return sent;
+}
+
+function manualWorkText(co: Company, t: { id: string; title: string; assignee: string; description: string }): string {
+  return [
+    `📝 ${co.meta.name}: task for ${t.assignee}`,
+    `${t.id} ${t.title}`,
+    truncate(t.description, 600),
+    "",
+    `Brief: ai-company-os work next -c ${path.basename(co.dir)} --as ${t.assignee}`,
+    "Then report with `work done`, or enter the result in the dashboard task view.",
   ].join("\n");
 }

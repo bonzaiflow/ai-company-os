@@ -21,14 +21,21 @@ import {
   readJson,
   serializeFrontmatter,
   slugify,
+  writeFileAtomic,
   writeJson,
 } from "../util.js";
+import { withCompanyLock } from "./lock.js";
 
 /** All state of a company lives on disk inside its directory. This class is a
  * thin, synchronous accessor over those files — the CLI, the runtime, and the
  * web UI all go through it, so any of them can be restarted at any time. */
 export class Company {
   constructor(public dir: string) {}
+
+  /** Run a synchronous read-modify-write under the cross-process company lock. */
+  lock<T>(fn: () => T): T {
+    return withCompanyLock(this.dir, fn);
+  }
 
   static list(root: string): string[] {
     const base = path.join(root, "companies");
@@ -103,6 +110,15 @@ export class Company {
       provider: meta.provider || undefined,
       model: meta.model || undefined,
       budgetTokens: meta.budgetTokens ? Number(meta.budgetTokens) : undefined,
+      runtime: (meta.runtime as AgentSpec["runtime"]) || undefined,
+      adapter: meta.adapter || undefined,
+      cwd: meta.cwd || undefined,
+      leaseMinutes: meta.leaseMinutes ? Number(meta.leaseMinutes) : undefined,
+      maxTasksPerDay: meta.maxTasksPerDay ? Number(meta.maxTasksPerDay) : undefined,
+      maxMinutesPerTask: meta.maxMinutesPerTask ? Number(meta.maxMinutesPerTask) : undefined,
+      approveResults: meta.approveResults === "true" || undefined,
+      toolMode: (meta.toolMode as AgentSpec["toolMode"]) || undefined,
+      tokenEnv: meta.tokenEnv || undefined,
     };
   }
 
@@ -113,7 +129,18 @@ export class Company {
       `# Agent\n\n## Responsibilities\n` +
       spec.responsibilities.map((r) => `- ${r}`).join("\n") +
       "\n";
-    fs.writeFileSync(
+    // runtime fields only appear in profiles that use them
+    const runtime: Record<string, string> = {};
+    if (spec.runtime && spec.runtime !== "internal") runtime.runtime = spec.runtime;
+    if (spec.adapter) runtime.adapter = spec.adapter;
+    if (spec.cwd) runtime.cwd = spec.cwd;
+    if (spec.leaseMinutes) runtime.leaseMinutes = String(spec.leaseMinutes);
+    if (spec.maxTasksPerDay) runtime.maxTasksPerDay = String(spec.maxTasksPerDay);
+    if (spec.maxMinutesPerTask) runtime.maxMinutesPerTask = String(spec.maxMinutesPerTask);
+    if (spec.approveResults) runtime.approveResults = "true";
+    if (spec.toolMode) runtime.toolMode = spec.toolMode;
+    if (spec.tokenEnv) runtime.tokenEnv = spec.tokenEnv;
+    writeFileAtomic(
       path.join(dir, "profile.md"),
       serializeFrontmatter(
         {
@@ -127,6 +154,7 @@ export class Company {
           provider: spec.provider ?? "",
           model: spec.model ?? "",
           budgetTokens: spec.budgetTokens ? String(spec.budgetTokens) : "",
+          ...runtime,
         },
         body
       )
@@ -189,6 +217,7 @@ export class Company {
       continuations: meta.continuations ? Number(meta.continuations) : undefined,
       lastCount: meta.lastCount ? Number(meta.lastCount) : undefined,
       noProgress: meta.noProgress ? Number(meta.noProgress) : undefined,
+      lease: meta.lease ? (JSON.parse(meta.lease) as Task["lease"]) : undefined,
     };
   }
 
@@ -197,7 +226,7 @@ export class Company {
     t.updatedAt = nowIso();
     const body =
       t.description.trim() + (t.result ? `\n\n## Result\n${t.result.trim()}\n` : "\n");
-    fs.writeFileSync(
+    writeFileAtomic(
       this.taskFile(t.id),
       serializeFrontmatter(
         {
@@ -216,6 +245,7 @@ export class Company {
           continuations: t.continuations ? String(t.continuations) : "",
           lastCount: t.lastCount !== undefined ? String(t.lastCount) : "",
           noProgress: t.noProgress ? String(t.noProgress) : "",
+          lease: t.lease ? JSON.stringify(t.lease) : "",
         },
         body
       )
@@ -242,17 +272,19 @@ export class Company {
     fields: Pick<Task, "title" | "description" | "assignee" | "createdBy"> &
       Partial<Pick<Task, "parent" | "priority" | "target" | "maxAttempts">>
   ): Task {
-    const t: Task = {
-      id: this.nextTaskId(),
-      status: "queued",
-      priority: fields.priority ?? "normal",
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      ...fields,
-    };
-    this.saveTask(t);
-    this.audit({ type: "task.created", ok: true, taskId: t.id, agent: t.createdBy, detail: t.title });
-    return t;
+    return this.lock(() => {
+      const t: Task = {
+        id: this.nextTaskId(),
+        status: "queued",
+        priority: fields.priority ?? "normal",
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        ...fields,
+      };
+      this.saveTask(t);
+      this.audit({ type: "task.created", ok: true, taskId: t.id, agent: t.createdBy, detail: t.title });
+      return t;
+    });
   }
 
   children(id: string): Task[] {
@@ -270,36 +302,42 @@ export class Company {
   }
 
   enqueue(id: string): void {
-    const q = this.queue();
-    if (!q.includes(id)) q.push(id);
-    writeJson(this.queueFile(), q);
-    this.audit({ type: "queue.enqueue", ok: true, taskId: id });
+    return this.lock(() => {
+      const q = this.queue();
+      if (!q.includes(id)) q.push(id);
+      writeJson(this.queueFile(), q);
+      this.audit({ type: "queue.enqueue", ok: true, taskId: id });
+    });
   }
 
   /** Put a task at the FRONT of the queue — used when an infrastructure
    * outage interrupted it, so pipeline order is preserved on resume. */
   enqueueFront(id: string): void {
-    const q = this.queue().filter((x) => x !== id);
-    q.unshift(id);
-    writeJson(this.queueFile(), q);
-    this.audit({ type: "queue.enqueue", ok: true, taskId: id, detail: "front (resume)" });
+    return this.lock(() => {
+      const q = this.queue().filter((x) => x !== id);
+      q.unshift(id);
+      writeJson(this.queueFile(), q);
+      this.audit({ type: "queue.enqueue", ok: true, taskId: id, detail: "front (resume)" });
+    });
   }
 
   /** Move `ids` (already dependency-ordered: blockers first) to the front of
    * the queue, preserving relative order among the rest. */
   prioritizeInQueue(ids: string[]): void {
-    if (!ids.length) return;
-    const want = new Set(ids);
-    const q = this.queue();
-    const promoted = ids.filter((id) => q.includes(id));
-    if (!promoted.length) return;
-    const rest = q.filter((id) => !want.has(id));
-    writeJson(this.queueFile(), [...promoted, ...rest]);
-    this.audit({
-      type: "queue.prioritize",
-      ok: true,
-      taskId: promoted[0],
-      detail: promoted.join(","),
+    return this.lock(() => {
+      if (!ids.length) return;
+      const want = new Set(ids);
+      const q = this.queue();
+      const promoted = ids.filter((id) => q.includes(id));
+      if (!promoted.length) return;
+      const rest = q.filter((id) => !want.has(id));
+      writeJson(this.queueFile(), [...promoted, ...rest]);
+      this.audit({
+        type: "queue.prioritize",
+        ok: true,
+        taskId: promoted[0],
+        detail: promoted.join(","),
+      });
     });
   }
 
@@ -307,43 +345,51 @@ export class Company {
    * afterId is missing / not in the queue). Used to park a waiting parent
    * right under its blockers. */
   placeInQueueAfter(id: string, afterId?: string | null): void {
-    const q = this.queue().filter((x) => x !== id);
-    let at = afterId ? q.indexOf(afterId) : -1;
-    if (at < 0) q.unshift(id);
-    else q.splice(at + 1, 0, id);
-    writeJson(this.queueFile(), q);
-    this.audit({
-      type: "queue.place",
-      ok: true,
-      taskId: id,
-      detail: afterId ? `after ${afterId}` : "front",
+    return this.lock(() => {
+      const q = this.queue().filter((x) => x !== id);
+      let at = afterId ? q.indexOf(afterId) : -1;
+      if (at < 0) q.unshift(id);
+      else q.splice(at + 1, 0, id);
+      writeJson(this.queueFile(), q);
+      this.audit({
+        type: "queue.place",
+        ok: true,
+        taskId: id,
+        detail: afterId ? `after ${afterId}` : "front",
+      });
     });
   }
 
   dequeue(): string | undefined {
-    const q = this.queue();
-    const id = q.shift();
-    if (id !== undefined) {
-      writeJson(this.queueFile(), q);
-      this.audit({ type: "queue.dequeue", ok: true, taskId: id });
-    }
-    return id;
+    return this.lock(() => {
+      const q = this.queue();
+      const id = q.shift();
+      if (id !== undefined) {
+        writeJson(this.queueFile(), q);
+        this.audit({ type: "queue.dequeue", ok: true, taskId: id });
+      }
+      return id;
+    });
   }
 
   /** Remove specific ids from the queue (claim for a parallel wave). */
   dequeueMany(ids: string[]): void {
-    if (!ids.length) return;
-    const drop = new Set(ids);
-    const q = this.queue().filter((id) => !drop.has(id));
-    writeJson(this.queueFile(), q);
-    for (const id of ids) {
-      this.audit({ type: "queue.dequeue", ok: true, taskId: id, detail: "wave claim" });
-    }
+    return this.lock(() => {
+      if (!ids.length) return;
+      const drop = new Set(ids);
+      const q = this.queue().filter((id) => !drop.has(id));
+      writeJson(this.queueFile(), q);
+      for (const id of ids) {
+        this.audit({ type: "queue.dequeue", ok: true, taskId: id, detail: "wave claim" });
+      }
+    });
   }
 
   /** Empty the queue file (task statuses are updated by the caller). */
   clearQueue(): void {
-    writeJson(this.queueFile(), []);
+    return this.lock(() => {
+      writeJson(this.queueFile(), []);
+    });
   }
 
   // ---- messages (INBOX/OUTBOX) ----
@@ -358,8 +404,8 @@ export class Company {
   ): void {
     const inbox = path.join(this.agentDir(to), "INBOX");
     ensureDir(inbox);
-    const file = path.join(inbox, `${taskId ?? "MSG"}-${Date.now()}.md`);
-    fs.writeFileSync(
+    const file = path.join(inbox, `${taskId ?? "MSG"}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.md`);
+    writeFileAtomic(
       file,
       serializeFrontmatter(
         {
@@ -377,30 +423,53 @@ export class Company {
     this.audit({ type: "delivery.sent", ok: true, agent: from, taskId, detail: `→ ${to}: ${subject}` });
   }
 
-  /** Read and consume unread inbox messages (moved to INBOX/read/). */
-  readInbox(agent: string): { from: string; subject: string; content: string }[] {
+  /** Unread inbox messages without consuming them. */
+  peekInbox(agent: string): { file: string; from: string; subject: string; taskId?: string; sentAt?: string; content: string }[] {
     const inbox = path.join(this.agentDir(agent), "INBOX");
     if (!fs.existsSync(inbox)) return [];
-    const files = fs
+    return fs
       .readdirSync(inbox)
       .filter((f) => f.endsWith(".md"))
-      .sort();
-    const readDir = path.join(inbox, "read");
-    ensureDir(readDir);
-    const out = [];
-    for (const f of files) {
-      const { meta, body } = parseFrontmatter(fs.readFileSync(path.join(inbox, f), "utf8"));
-      out.push({ from: meta.from ?? "?", subject: meta.subject ?? "", content: body.trim() });
-      fs.renameSync(path.join(inbox, f), path.join(readDir, f));
-      this.audit({
-        type: "delivery.received",
-        ok: true,
-        agent,
-        taskId: meta.taskId || undefined,
-        detail: `from ${meta.from}: ${meta.subject}`,
+      .sort()
+      .map((f) => {
+        const { meta, body } = parseFrontmatter(fs.readFileSync(path.join(inbox, f), "utf8"));
+        return {
+          file: f,
+          from: meta.from ?? "?",
+          subject: meta.subject ?? "",
+          taskId: meta.taskId || undefined,
+          sentAt: meta.sentAt || undefined,
+          content: body.trim(),
+        };
       });
-    }
-    return out;
+  }
+
+  /** Read and consume unread inbox messages (moved to INBOX/read/). */
+  readInbox(agent: string): { from: string; subject: string; content: string }[] {
+    return this.lock(() => {
+      const inbox = path.join(this.agentDir(agent), "INBOX");
+      if (!fs.existsSync(inbox)) return [];
+      const files = fs
+        .readdirSync(inbox)
+        .filter((f) => f.endsWith(".md"))
+        .sort();
+      const readDir = path.join(inbox, "read");
+      ensureDir(readDir);
+      const out = [];
+      for (const f of files) {
+        const { meta, body } = parseFrontmatter(fs.readFileSync(path.join(inbox, f), "utf8"));
+        out.push({ from: meta.from ?? "?", subject: meta.subject ?? "", content: body.trim() });
+        fs.renameSync(path.join(inbox, f), path.join(readDir, f));
+        this.audit({
+          type: "delivery.received",
+          ok: true,
+          agent,
+          taskId: meta.taskId || undefined,
+          detail: `from ${meta.from}: ${meta.subject}`,
+        });
+      }
+      return out;
+    });
   }
 
   // ---- workspace (agent thoughts) ----
@@ -417,22 +486,24 @@ export class Company {
    * deletion of a past line breaks every hash after it — verifiable with
    * `ai-company-os audit verify`. The head file is just a cache of the last hash. */
   audit(e: Omit<AuditEvent, "ts">): void {
-    const headFile = path.join(this.dir, "audit.head");
-    let prev = "";
-    try {
-      prev = fs.readFileSync(headFile, "utf8").trim();
-    } catch {}
-    const body = { ts: nowIso(), ...e };
-    const h = crypto
-      .createHash("sha256")
-      .update(prev + JSON.stringify(body))
-      .digest("hex")
-      .slice(0, 16);
-    fs.appendFileSync(
-      path.join(this.dir, "audit.jsonl"),
-      JSON.stringify({ ...body, h }) + "\n"
-    );
-    fs.writeFileSync(headFile, h);
+    return this.lock(() => {
+      const headFile = path.join(this.dir, "audit.head");
+      let prev = "";
+      try {
+        prev = fs.readFileSync(headFile, "utf8").trim();
+      } catch {}
+      const body = { ts: nowIso(), ...e };
+      const h = crypto
+        .createHash("sha256")
+        .update(prev + JSON.stringify(body))
+        .digest("hex")
+        .slice(0, 16);
+      fs.appendFileSync(
+        path.join(this.dir, "audit.jsonl"),
+        JSON.stringify({ ...body, h }) + "\n"
+      );
+      fs.writeFileSync(headFile, h);
+    });
   }
 
   /** Recompute the whole chain; returns null if intact, else the first bad line. */
@@ -532,21 +603,25 @@ export class Company {
   }
 
   addSpent(tokens: number, toolCalls: number, agent?: string): void {
-    const s = this.spent();
-    s.tokens += tokens;
-    s.toolCalls += toolCalls;
-    if (agent && tokens > 0) {
-      s.byAgent = s.byAgent ?? {};
-      s.byAgent[agent] = (s.byAgent[agent] ?? 0) + tokens;
-    }
-    writeJson(this.spentFile(), s);
+    return this.lock(() => {
+      const s = this.spent();
+      s.tokens += tokens;
+      s.toolCalls += toolCalls;
+      if (agent && tokens > 0) {
+        s.byAgent = s.byAgent ?? {};
+        s.byAgent[agent] = (s.byAgent[agent] ?? 0) + tokens;
+      }
+      writeJson(this.spentFile(), s);
+    });
   }
 
   /** Persist changed meta fields (pause, schedule, policies, budget…). */
   saveMeta(patch: Partial<CompanyMeta>): CompanyMeta {
-    const meta = { ...this.meta, ...patch };
-    writeJson(path.join(this.dir, "company.json"), meta);
-    return meta;
+    return this.lock(() => {
+      const meta = { ...this.meta, ...patch };
+      writeJson(path.join(this.dir, "company.json"), meta);
+      return meta;
+    });
   }
 
   /** Returns a human reason when some budget cap is exhausted, else null. */

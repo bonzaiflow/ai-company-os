@@ -34,9 +34,11 @@ import { registerConfigCommands } from "./config.js";
 import { registerUploadCommands } from "./upload.js";
 import { registerGovernanceCommands } from "./governance.js";
 import { registerAgentLlmCommands } from "./agent-llm.js";
+import { registerWorkCommands } from "./work.js";
 import { companyState, listAgentFiles } from "./inspect.js";
 
-const ROOT = process.cwd();
+// AI_COMPANY_OS_ROOT lets external agents run commands from any directory
+const ROOT = process.env.AI_COMPANY_OS_ROOT ? path.resolve(process.env.AI_COMPANY_OS_ROOT) : process.cwd();
 loadDotEnv(ROOT);
 const BUNDLED_SKILLS = path.resolve(fileURLToPath(import.meta.url), "../../../skills");
 const DEFAULT_RETRY_HEADROOM = 2;
@@ -92,6 +94,7 @@ registerConfigCommands(program, CTX);
 registerUploadCommands(program, CTX);
 registerGovernanceCommands(program, CTX);
 registerAgentLlmCommands(program, CTX);
+registerWorkCommands(program, CTX);
 program
   .command("init")
   .description("create ai-company-os.json + companies/ + plans/ in the current directory")

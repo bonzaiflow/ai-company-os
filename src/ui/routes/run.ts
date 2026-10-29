@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../../config.js";
 import { flushQueue, raiseTaskPriority, requeueStuckRunning, runLoop, tickWave } from "../../core/runtime.js";
+import { ownerRelease, ownerReport } from "../../core/lease.js";
 import { Company } from "../../core/store.js";
 import { json, readBody } from "../http.js";
 import { pushRunnerLog, runnerFor } from "../runners.js";
@@ -58,6 +59,36 @@ export const handleRunRoutes: RouteHandler = async ({ root, req, res, url }) => 
     co.enqueue(t.id);
     co.audit({ type: "task.retried", ok: true, taskId: t.id, detail: "by owner (ui)" });
     json(res, { ok: true, id: t.id });
+    return true;
+  }
+
+  // external / manual agents: owner takes a held task back, or enters its result
+  if (req.method === "POST" && url.pathname === "/api/task/release") {
+    const body = await readBody(req);
+    const co = Company.open(root, String(body.company ?? ""));
+    try {
+      ownerRelease(co, String(body.id ?? ""));
+      json(res, { ok: true });
+    } catch (e) {
+      json(res, { error: (e as Error).message }, 400);
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/task/report") {
+    const body = await readBody(req);
+    const co = Company.open(root, String(body.company ?? ""));
+    const result = String(body.result ?? "").trim();
+    if (!result) {
+      json(res, { error: "result is empty" }, 400);
+      return true;
+    }
+    try {
+      const t = ownerReport(co, String(body.id ?? ""), result, !!body.failed);
+      json(res, { ok: true, status: t.status });
+    } catch (e) {
+      json(res, { error: (e as Error).message }, 400);
+    }
     return true;
   }
 

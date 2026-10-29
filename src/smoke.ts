@@ -9,6 +9,10 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { ingestInbound, mainMenuKeyboard } from "./core/connectors/index.js";
+import { renderBrief } from "./core/brief.js";
+import { decideApproval } from "./core/governance.js";
+import { claimNext, delegateHeld, finishTask, WorkError } from "./core/lease.js";
+import { expireLeases } from "./core/queue.js";
 import { runLoop } from "./core/runtime.js";
 import { scaffoldCompany } from "./core/store.js";
 import { resolveToolName, toolsFor } from "./core/tools.js";
@@ -113,5 +117,67 @@ assert.ok(ing.taskId, "inbound created a task");
 assert.ok(co.queue().length === beforeQ + 1, "inbound task enqueued");
 const unread = fs.readdirSync(path.join(co.dir, "agents", "Boss", "INBOX")).filter((f) => f.endsWith(".md"));
 assert.ok(unread.length >= 1, "inbound landed in chief INBOX");
+
+// ---- external agents: pull chief, push worker, manual reviewer (no LLM) ----
+const ext = scaffoldCompany(
+  root,
+  {
+    name: "External Co",
+    goal: "Prove external agents work through the contract",
+    approach: "Pull chief delegates to a push worker and a manual reviewer.",
+    agents: [
+      { name: "Lead", role: "Chief", rank: "chief", responsibilities: ["coordinate"], tools: [], skills: [], runtime: "external" },
+      { name: "Runner", role: "Runner", rank: "worker", manager: "Lead", responsibilities: ["run"], tools: [], skills: [], runtime: "external", adapter: "smoke-sh" },
+      { name: "Human", role: "Reviewer", rank: "worker", manager: "Lead", responsibilities: ["review"], tools: [], skills: [], runtime: "manual", approveResults: true },
+    ],
+    budget: { tokens: 100_000 },
+    rootTasks: [{ title: "Ship it", description: "Run and review" }],
+  },
+  [],
+  "mock"
+);
+cfg.agentRuntimes = {
+  ...cfg.agentRuntimes,
+  "smoke-sh": { type: "command", argv: ["sh", "-c", `echo 'working'; echo '{"action":"done","result":"ran {taskId} as '$AI_COMPANY_OS_AGENT'"}'`] },
+};
+assert.equal(ext.loadAgent("Runner").adapter, "smoke-sh", "runtime fields persist in profile.md");
+
+const lead = claimNext(ext, "Lead");
+assert.ok(lead && !lead.resumed, "pull agent claims its task");
+assert.equal(claimNext(ext, "Lead")?.resumed, true, "second claim resumes the held task");
+assert.throws(() => finishTask(ext, lead.task.id, "wrong-lease", "x"), WorkError, "foreign lease is refused");
+delegateHeld(ext, lead.task.id, lead.lease.id, [
+  { title: "Run", description: "run it", assignee: "Runner" },
+  { title: "Review", description: "check it", assignee: "Human" },
+]);
+assert.equal(ext.loadTask(lead.task.id).status, "waiting", "delegating parks the parent");
+
+await runLoop(ext, cfg, { replan: false, log: (l) => console.log(l) });
+const run = ext.listTasks().find((t) => t.assignee === "Runner")!;
+assert.equal(run.status, "done", "push worker ran via adapter");
+assert.match(run.result ?? "", /ran TASK-\d+ as Runner/, "push result parsed from JSON reply");
+assert.equal(ext.listTasks().find((t) => t.assignee === "Human")!.status, "queued", "engine never runs manual agents");
+
+const human = claimNext(ext, "Human", "manual")!;
+assert.equal(human.lease.via, "manual");
+const reviewed = finishTask(ext, human.task.id, human.lease.id, "looks right");
+assert.equal(reviewed.status, "review", "approveResults holds the result for the owner");
+decideApproval(ext, reviewed.status === "review" ? reviewed.approval.id : "", true);
+assert.equal(ext.loadTask(human.task.id).status, "done", "owner approval completes the task");
+
+const back = claimNext(ext, "Lead")!;
+assert.equal(back.task.id, lead.task.id, "parent returns to the pull chief");
+assert.ok(renderBrief(ext, back.task, ext.loadAgent("Lead"), back.lease).includes("Results from your subtasks"), "brief carries child results");
+finishTask(ext, back.task.id, back.lease.id, "shipped");
+assert.ok(ext.listTasks().every((t) => t.status === "done"), "external company finished");
+
+const late = ext.createTask({ title: "Late", description: "x", assignee: "Human", createdBy: "user" });
+ext.enqueue(late.id);
+const held = claimNext(ext, "Human")!;
+held.task.lease = { ...held.lease, until: new Date(Date.now() - 1000).toISOString() };
+ext.saveTask(held.task);
+assert.deepEqual(expireLeases(ext), [late.id], "expired lease is reclaimed");
+assert.equal(ext.loadTask(late.id).status, "queued", "expired task requeued as a retry");
+assert.equal(ext.verifyAudit(), null, "audit chain intact");
 
 console.log("\nSMOKE TEST PASSED ✓  (workspace: " + root + ")");

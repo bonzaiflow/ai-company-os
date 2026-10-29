@@ -1,6 +1,7 @@
 import type { AiCompanyOsConfig } from "../types.js";
 import type { Company } from "./store.js";
 import {
+  notifyManualWork,
   notifyOwner,
   queueEmptyNudgeText,
   replanNudgeText,
@@ -24,6 +25,7 @@ export async function tickWave(
     return [{ status: "budget", detail: over }];
   }
 
+  void notifyManualWork(co).catch(() => {});
   const lock = opts.storeLock ?? storeLockFor(co);
   const maxParallel = opts.maxParallel ?? 4;
   const wave = await lock.run(() => {

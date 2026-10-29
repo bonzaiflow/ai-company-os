@@ -10,3 +10,4 @@ promised — it's raw material for deciding what to build next.
 - [quality-gates.md](quality-gates.md) — verification as a first-class pipeline stage
 - [multi-company.md](multi-company.md) — companies hiring other companies
 - [observability.md](observability.md) — cost/latency dashboards, replayable runs
+- [external-agents-plan.md](external-agents-plan.md) — external agents (Claude Code, Codex, chats, humans) as org-chart workers via a neutral contract

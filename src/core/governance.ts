@@ -3,6 +3,11 @@ import path from "node:path";
 import type { Approval } from "../types.js";
 import { ensureDir, nowIso, readJson, truncate, writeJson } from "../util.js";
 import type { Company } from "./store.js";
+import { completeTask } from "./task-lifecycle.js";
+
+/** Pseudo-tool of approvals that hold an external agent's RESULT for owner
+ * review (agent profile `approveResults: true`). args = { result }. */
+export const RESULT_REVIEW = "owner.review";
 
 /** Owner approval gates. When a tool is listed in company policies.approveTools,
  * an agent's call to it parks the task and files an approval request; the
@@ -32,6 +37,16 @@ function saveApproval(co: Company, a: Approval): void {
 }
 
 export function requestApproval(
+  co: Company,
+  agent: string,
+  taskId: string,
+  tool: string,
+  args: Record<string, unknown>
+): Approval {
+  return co.lock(() => requestApprovalLocked(co, agent, taskId, tool, args));
+}
+
+function requestApprovalLocked(
   co: Company,
   agent: string,
   taskId: string,
@@ -70,6 +85,10 @@ export function decideApproval(
   approve: boolean,
   note?: string
 ): Approval {
+  return co.lock(() => decideApprovalLocked(co, id, approve, note));
+}
+
+function decideApprovalLocked(co: Company, id: string, approve: boolean, note?: string): Approval {
   const a = listApprovals(co).find((x) => x.id === id);
   if (!a) throw new Error(`no approval ${id}`);
   if (a.status !== "pending") throw new Error(`${id} already ${a.status}`);
@@ -83,6 +102,21 @@ export function decideApproval(
     taskId: a.taskId,
     detail: `${id} by owner${note ? `: ${note}` : ""}`,
   });
+  if (a.tool === RESULT_REVIEW) {
+    // result review: approve finishes the task, deny sends it back with the note
+    consumeApproval(co, a);
+    const task = co.loadTask(a.taskId);
+    if (approve) {
+      completeTask(co, task, a.agent, String(a.args.result ?? ""));
+    } else {
+      task.status = "queued";
+      task.result = `REVIEW DENIED by owner${note ? `: ${note}` : ""}\n\nPrevious result:\n${String(a.args.result ?? "")}`;
+      co.saveTask(task);
+      co.enqueue(task.id);
+      co.sendMessage("owner", a.agent, `changes requested: ${task.title}`, note || "The owner did not accept the result. Rework it.", task.id);
+    }
+    return a;
+  }
   // wake the parked task so the agent can proceed (or hear the refusal)
   const task = co.loadTask(a.taskId);
   if (task.status === "waiting" || task.status === "queued") {

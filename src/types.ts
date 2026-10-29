@@ -1,5 +1,11 @@
 export type Rank = "chief" | "manager" | "worker";
 
+/** Who drives an agent. internal: the tick engine calls an LLM per step.
+ * external: an autonomous agent (Claude Code, Codex, …) takes whole tasks —
+ * pulled by the agent itself (`work next`) or pushed via an `adapter`.
+ * manual: a human or a chat window; the owner is notified and reports back. */
+export type AgentRuntime = "internal" | "external" | "manual";
+
 export interface AgentSpec {
   name: string;
   role: string;
@@ -15,6 +21,35 @@ export interface AgentSpec {
   model?: string;
   /** per-agent token cap; agent stops receiving tasks when exceeded */
   budgetTokens?: number;
+  /** default internal */
+  runtime?: AgentRuntime;
+  /** external push: name from ai-company-os.json → agentRuntimes */
+  adapter?: string;
+  /** working directory for push runs (must be under allowedCwds); default agents/<Name>/workspace */
+  cwd?: string;
+  /** lease TTL; default 30 (external) / 1440 (manual) */
+  leaseMinutes?: number;
+  maxTasksPerDay?: number;
+  /** hard wall-clock cap per claimed task (push runs are killed, leases capped) */
+  maxMinutesPerTask?: number;
+  /** results go to the owner for review before the task is done */
+  approveResults?: boolean;
+  /** native: the agent's own tools (sandboxed by its adapter); company: only ai-company-os tools */
+  toolMode?: "native" | "company";
+  /** env var holding this agent's token (required for remote/HTTP access) */
+  tokenEnv?: string;
+}
+
+/** Who currently holds a running task of an external/manual agent, and until when. */
+export interface TaskLease {
+  id: string;
+  holder: string;
+  via: "pull" | "push" | "manual";
+  claimedAt: string;
+  until: string;
+  heartbeatAt?: string;
+  beats?: number;
+  pid?: number;
 }
 
 export type TaskStatus = "queued" | "running" | "waiting" | "done" | "failed";
@@ -47,6 +82,8 @@ export interface Task {
   noProgress?: number;
   /** transient: shortfall note stamped when a target stalls (not persisted) */
   _partialNote?: string;
+  /** set while an external/manual agent holds the task (status running) */
+  lease?: TaskLease;
 }
 
 export interface TaskTarget {
@@ -168,6 +205,8 @@ export interface ConnectorsConfig {
 /** Durable cursor / status for connector polling (companies/<slug>/connectors-state.json). */
 export interface ConnectorsState {
   lastPollAt?: string;
+  /** task ids of manual agents the owner was already told about */
+  manualNotified?: string[];
   lastError?: string;
   email?: { lastUid?: number };
   telegram?: {
@@ -284,6 +323,26 @@ export interface AiCompanyOsConfig {
   models?: RoleDefaults;
   /** last workspace folder opened in the dashboard (user config only) */
   workspaceRoot?: string;
+  /** launchers for external push agents, referenced by an agent's `adapter:` */
+  agentRuntimes?: Record<string, AgentRuntimeConfig>;
+  /** directories push agents may use as cwd (prefix match, ~ expanded) */
+  allowedCwds?: string[];
+}
+
+/** How to start an external agent for one task. argv placeholders:
+ * {prompt} {promptFile} {taskId} {agent} {company} {cwd} {lease} */
+export interface AgentRuntimeConfig {
+  type: "command";
+  argv: string[];
+  /** what to do when the process exits without calling `work done`:
+   * stdout = exit 0 completes with stdout as result; strict = treat as failure */
+  onExit?: "stdout" | "strict";
+  /** stdout format: claude-json = `claude -p --output-format json` (reply text + token usage) */
+  usage?: "claude-json";
+  /** extra env vars (values) for the child */
+  env?: Record<string, string>;
+  /** default timeout when the agent has no maxMinutesPerTask */
+  timeoutMinutes?: number;
 }
 
 /** One decision emitted by an agent per step. Flat on purpose: small models

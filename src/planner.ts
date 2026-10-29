@@ -130,6 +130,16 @@ export function normalizePlan(raw: Plan): Plan {
       skills: a.skills ?? [],
       provider: a.provider,
       model: a.model,
+      // external/manual agents (see docs/AGENT-CONTRACT.md) survive plan → launch
+      ...(["external", "manual"].includes(a.runtime ?? "") ? { runtime: a.runtime } : {}),
+      ...(a.adapter ? { adapter: a.adapter } : {}),
+      ...(a.cwd ? { cwd: a.cwd } : {}),
+      ...(a.leaseMinutes ? { leaseMinutes: Number(a.leaseMinutes) } : {}),
+      ...(a.maxTasksPerDay ? { maxTasksPerDay: Number(a.maxTasksPerDay) } : {}),
+      ...(a.maxMinutesPerTask ? { maxMinutesPerTask: Number(a.maxMinutesPerTask) } : {}),
+      ...(a.approveResults ? { approveResults: true } : {}),
+      ...(a.toolMode === "company" || a.toolMode === "native" ? { toolMode: a.toolMode } : {}),
+      ...(a.tokenEnv ? { tokenEnv: a.tokenEnv } : {}),
     })),
     budget: {
       tokens: raw.budget?.tokens || 500_000,

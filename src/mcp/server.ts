@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { formatCliResult, resolveWorkspaceRoot, runCli } from "./run.js";
 import { registerCuratedTools } from "./tools.js";
+import { registerWorkTools } from "./work-tools.js";
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
@@ -84,6 +85,7 @@ export function createMcpServer(): McpServer {
   );
 
   registerCuratedTools(server);
+  registerWorkTools(server);
   return server;
 }
 

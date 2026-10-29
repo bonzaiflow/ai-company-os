@@ -83,6 +83,11 @@ export function continueTowardTarget(
 }
 
 export function completeTask(co: Company, task: Task, agent: string, result: string): void {
+  co.lock(() => completeTaskLocked(co, task, agent, result));
+}
+
+function completeTaskLocked(co: Company, task: Task, agent: string, result: string): void {
+  task.lease = undefined;
   if (continueTowardTarget(co, task, agent, result)) return;
 
   task.status = "done";
@@ -99,6 +104,11 @@ export function completeTask(co: Company, task: Task, agent: string, result: str
 }
 
 export function failTask(co: Company, task: Task, agent: string, reason: string): void {
+  co.lock(() => failTaskLocked(co, task, agent, reason));
+}
+
+function failTaskLocked(co: Company, task: Task, agent: string, reason: string): void {
+  task.lease = undefined;
   task.status = "failed";
   task.result = `FAILED: ${reason}`;
   co.saveTask(task);
@@ -117,6 +127,11 @@ export function retryOrFail(
   agent: string,
   reason: string
 ): "retried" | "failed" {
+  return co.lock(() => retryOrFailLocked(co, task, agent, reason));
+}
+
+function retryOrFailLocked(co: Company, task: Task, agent: string, reason: string): "retried" | "failed" {
+  task.lease = undefined;
   const attempts = (task.attempts ?? 0) + 1;
   const max = task.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   task.attempts = attempts;

@@ -64,4 +64,57 @@ export function registerAgentLlmCommands(program: Command, ctx: CliCtx): void {
         })
     )
   );
+
+  withJson(
+    companyOption(
+      program
+        .command("set-runtime")
+        .description("make an agent internal, external (pull or push) or manual — see docs/AGENT-CONTRACT.md")
+        .argument("<name>", "agent name")
+        .option("-r, --runtime <runtime>", "internal | external | manual")
+        .option("-a, --adapter <name>", "push launcher from agentRuntimes (codex, claude-code, cursor, …); empty = pull")
+        .option("--cwd <dir>", "run directory for push runs (must be under allowedCwds)")
+        .option("--lease-minutes <n>")
+        .option("--max-tasks-per-day <n>")
+        .option("--max-minutes-per-task <n>")
+        .option("--approve-results <bool>", "true = owner reviews results before done")
+        .option("--tool-mode <mode>", "native | company")
+        .action((name: string, opts) => {
+          const co = openCompany(ctx, opts.company);
+          const cfg = loadConfig(ctx.root);
+          let agent;
+          try {
+            agent = co.loadAgent(name);
+          } catch {
+            fail(`no agent named ${name}`);
+          }
+          if (opts.runtime !== undefined) {
+            if (!["internal", "external", "manual"].includes(opts.runtime)) fail("runtime must be internal, external or manual");
+            agent.runtime = opts.runtime === "internal" ? undefined : opts.runtime;
+          }
+          if (opts.adapter !== undefined) {
+            if (opts.adapter && !cfg.agentRuntimes?.[opts.adapter]) {
+              fail(`unknown adapter "${opts.adapter}" (have: ${Object.keys(cfg.agentRuntimes ?? {}).join(", ")})`);
+            }
+            agent.adapter = opts.adapter || undefined;
+          }
+          const num = (v: string | undefined, cur: number | undefined) => (v === undefined ? cur : Number(v) || undefined);
+          if (opts.cwd !== undefined) agent.cwd = opts.cwd || undefined;
+          agent.leaseMinutes = num(opts.leaseMinutes, agent.leaseMinutes);
+          agent.maxTasksPerDay = num(opts.maxTasksPerDay, agent.maxTasksPerDay);
+          agent.maxMinutesPerTask = num(opts.maxMinutesPerTask, agent.maxMinutesPerTask);
+          if (opts.approveResults !== undefined) agent.approveResults = opts.approveResults === "true" || undefined;
+          if (opts.toolMode !== undefined) {
+            if (opts.toolMode && !["native", "company"].includes(opts.toolMode)) fail("tool mode must be native or company");
+            agent.toolMode = opts.toolMode || undefined;
+          }
+          if (agent.runtime !== "external") agent.adapter = undefined;
+          co.saveAgent(agent);
+          const mode = !agent.runtime ? "internal" : agent.runtime === "manual" ? "manual" : agent.adapter ? `external push (${agent.adapter})` : "external pull";
+          out({ ok: true, agent: agent.name, runtime: agent.runtime ?? "internal", adapter: agent.adapter, mode }, () =>
+            console.log(c.green(`${name}: ${mode}`))
+          );
+        })
+    )
+  );
 }

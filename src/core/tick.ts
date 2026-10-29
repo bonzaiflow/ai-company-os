@@ -2,6 +2,8 @@ import type { AgentAction, AiCompanyOsConfig, LLMProvider } from "../types.js";
 import { resolveProvider } from "../llm/resolve.js";
 import { AsyncMutex, nowIso, truncate } from "../util.js";
 import { parseAction } from "./action-parse.js";
+import { runPush } from "./adapters/command.js";
+import { isLeased } from "./agent-runtime.js";
 import { executeAgentAction, normalizeAgentAction } from "./agent-actions.js";
 import { ACTION_SCHEMA, stepPrompt, systemPrompt } from "./prompts.js";
 import {
@@ -95,6 +97,19 @@ export async function tick(
       return { status: "worked", taskId: id, detail: "agent budget exhausted" };
     }
   }
+  // external push agents run their own loop; the engine only starts and watches them
+  if (isLeased(agent)) {
+    if (!task.lease) {
+      await gate(() => {
+        task.status = "queued";
+        co.saveTask(task);
+        co.enqueueFront(task.id);
+      });
+      return { status: "idle", taskId: id, detail: `${agent.name} is external — claimed without a lease` };
+    }
+    return runPush(co, cfg, task, agent, { log, shouldStop: opts.shouldStop });
+  }
+
   let provider: LLMProvider;
   try {
     provider = resolveProvider(cfg, {

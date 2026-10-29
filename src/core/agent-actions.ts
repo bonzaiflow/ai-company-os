@@ -5,6 +5,7 @@ import type { Company } from "./store.js";
 import { completeTask } from "./task-lifecycle.js";
 import { resolveToolName, type Tool } from "./tools.js";
 import type { TickResult } from "./tick-types.js";
+import { delegateTask, messageAgent } from "./work.js";
 
 export type Gate = <T>(fn: () => T | Promise<T>) => Promise<T>;
 
@@ -58,7 +59,7 @@ export async function executeAgentAction(
   ctx: ExecuteActionCtx,
   action: AgentAction
 ): Promise<ActionStepResult> {
-  const { co, task, agent, meta, tools, reports, depth, maxDepth, step, transcript, gate, log, taskId } =
+  const { co, task, agent, meta, tools, depth, maxDepth, step, transcript, gate, log, taskId } =
     ctx;
 
   switch (action.action) {
@@ -157,66 +158,25 @@ export async function executeAgentAction(
     }
 
     case "message": {
-      if (action.to && co.listAgents().some((a) => a.name === action.to)) {
-        await gate(() =>
-          co.sendMessage(agent.name, action.to!, `note re ${task.id}`, action.content ?? "", task.id)
-        );
-        transcript.push(`step ${step}: sent message to ${action.to}`);
-      } else {
-        transcript.push(`step ${step}: error: unknown agent "${action.to}"`);
-      }
+      const sent = await gate(() =>
+        messageAgent(co, agent.name, action.to ?? "", action.content ?? "", task.id)
+      );
+      transcript.push(sent.ok ? `step ${step}: sent message to ${action.to}` : `step ${step}: error: ${sent.error}`);
       return { kind: "continue" };
     }
 
     case "delegate": {
-      if (!reports.length) {
-        transcript.push(`step ${step}: error: you have no reports; do the work yourself and complete`);
+      const out = await gate(() =>
+        delegateTask(co, task, agent, action.subtasks ?? [], { depth, maxDepth })
+      );
+      if (!out.ok) {
+        transcript.push(`step ${step}: error: ${out.error}`);
         return { kind: "continue" };
       }
-      if (depth >= maxDepth) {
-        transcript.push(
-          `step ${step}: error: delegation depth limit reached; complete the task yourself`
-        );
-        return { kind: "continue" };
-      }
-      const subtasks = (action.subtasks ?? []).filter((s) => s.title && s.assignee);
-      const valid = subtasks.filter((s) => reports.some((r) => r.name === s.assignee));
-      if (!valid.length) {
-        transcript.push(
-          `step ${step}: error: no valid subtasks; assignees must be one of: ${reports.map((r) => r.name).join(", ")}`
-        );
-        return { kind: "continue" };
-      }
-      await gate(() => {
-        for (const s of valid.slice(0, 6)) {
-          const child = co.createTask({
-            title: s.title,
-            description: s.description || s.title,
-            assignee: s.assignee,
-            createdBy: agent.name,
-            parent: task.id,
-          });
-          co.enqueue(child.id);
-          co.sendMessage(
-            agent.name,
-            s.assignee,
-            `new task ${child.id}: ${s.title}`,
-            s.description || s.title,
-            child.id
-          );
-        }
-        task.status = "waiting";
-        co.saveTask(task);
-        co.appendThought(
-          agent.name,
-          task.id,
-          `**delegated:** ${valid.map((s) => `${s.assignee}←"${s.title}"`).join("; ")}`
-        );
-      });
-      log(`  ⇒ delegated ${valid.length} subtask(s), ${task.id} now waiting`);
+      log(`  ⇒ delegated ${out.created.length} subtask(s), ${task.id} now waiting`);
       return {
         kind: "return",
-        result: { status: "worked", taskId, detail: `delegated ${valid.length}` },
+        result: { status: "worked", taskId, detail: `delegated ${out.created.length}` },
       };
     }
 

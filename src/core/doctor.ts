@@ -85,7 +85,24 @@ export async function runDoctor(cfg: AiCompanyOsConfig): Promise<DoctorCheck[]> 
     }
   }
 
+  // ---- external push agents: is each launcher installed? (warn only) ----
+  for (const [name, rt] of Object.entries(cfg.agentRuntimes ?? {})) {
+    const bin = rt.argv[0] ?? "";
+    const found = findBinary(bin);
+    add(`agent.${name}`, !!found, found ? `binary: ${found}` : `"${bin}" not found on PATH — install it or drop adapter: ${name}`, true);
+  }
+
   return checks;
+}
+
+function findBinary(command: string): string | null {
+  const resolved = resolveCliCommand(command);
+  if (resolved.includes("/")) return fs.existsSync(resolved) ? resolved : null;
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    const p = path.join(dir, command);
+    if (dir && fs.existsSync(p)) return p;
+  }
+  return null;
 }
 
 export function formatDoctor(checks: DoctorCheck[]): string {

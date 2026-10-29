@@ -25,9 +25,17 @@ export function readJson<T>(file: string, fallback: T): T {
   }
 }
 
-export function writeJson(file: string, data: unknown): void {
+/** Write via temp file + rename so a reader in another process (or a crash
+ * mid-write) never sees a half-written file. */
+export function writeFileAtomic(file: string, data: string): void {
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, JSON.stringify(data, null, 2) + "\n");
+  const tmp = `${file}.${process.pid}-${Math.random().toString(36).slice(2, 8)}.tmp`;
+  fs.writeFileSync(tmp, data);
+  fs.renameSync(tmp, file);
+}
+
+export function writeJson(file: string, data: unknown): void {
+  writeFileAtomic(file, JSON.stringify(data, null, 2) + "\n");
 }
 
 export function truncate(s: string, max: number): string {
