@@ -71,6 +71,14 @@ function orgTree(co: Company): string {
   return lines.join("\n");
 }
 
+/** "held by X (pull) · 12 min left" for tasks an external/manual agent holds. */
+function leaseNote(t: import("../types.js").Task): string {
+  if (!t.lease) return "";
+  const left = Math.round((Date.parse(t.lease.until) - Date.now()) / 60_000);
+  const when = left >= 0 ? `${left} min left` : `expired ${-left} min ago`;
+  return c.dim(` ⟵ held by ${t.lease.holder} (${t.lease.via}) · ${when}`);
+}
+
 const program = new Command();
 program
   .name("ai-company-os")
@@ -422,7 +430,7 @@ program
                 ? c.yellow
                 : c.cyan;
         console.log(
-          `${c.bold(t.id)} ${color(t.status.padEnd(8))} ${c.dim((t.parent ?? "root").padEnd(9))} ${t.assignee.padEnd(16)} ${t.title}`
+          `${c.bold(t.id)} ${color(t.status.padEnd(8))} ${c.dim((t.parent ?? "root").padEnd(9))} ${t.assignee.padEnd(16)} ${t.title}${leaseNote(t)}`
         );
       }
     });
@@ -468,13 +476,18 @@ program
     const agent = co.loadAgent(name);
     const cfg = loadConfig(ROOT);
     const llm = effectiveAgentLlm(cfg, co.meta, agent);
+    const held = co.listTasks().filter((t) => t.assignee === name && t.status === "running" && t.lease);
     out(
-      { agent, llm, profile, files: listAgentFiles(co, name), workspace },
+      { agent, llm, held: held.map((t) => ({ id: t.id, title: t.title, lease: t.lease })), profile, files: listAgentFiles(co, name), workspace },
       () => {
         console.log(
           c.bold(`${agent.name}`) +
             c.dim(`  llm=${llm.provider}${llm.model ? "/" + llm.model : ""} (${llm.source})`)
         );
+        if (agent.runtime && agent.runtime !== "internal") {
+          console.log(c.dim(`runtime=${agent.runtime}${agent.adapter ? `/${agent.adapter}` : agent.runtime === "external" ? " (pull)" : ""}`));
+        }
+        for (const t of held) console.log(c.cyan(`holding ${t.id} "${t.title}"`) + leaseNote(t));
         console.log(profile);
         if (workspace.length) {
           console.log(c.bold("Workspace files:"));

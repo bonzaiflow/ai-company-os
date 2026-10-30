@@ -1,6 +1,8 @@
 import type { Command } from "commander";
 import path from "node:path";
 import { writeJson } from "../util.js";
+import fs from "node:fs";
+import { ownerRelease, ownerReport, WORK_EXIT, WorkError } from "../core/lease.js";
 import { flushQueue, raiseTaskPriority } from "../core/runtime.js";
 import { Company } from "../core/store.js";
 import { usageReport } from "../core/usage.js";
@@ -145,6 +147,60 @@ export function registerOpsCommands(program: Command, ctx: CliCtx): void {
                   c.dim(`  chain=${(result.chain || []).join(",")}`)
               );
             }
+          );
+        })
+    )
+  );
+  // Owner side of the work contract — the CLI twin of the dashboard's
+  // "Take back" / "Enter the result" for external and manual agents.
+  const guard = <T>(fn: () => T): T => {
+    try {
+      return fn();
+    } catch (e) {
+      if (e instanceof WorkError) fail(e.message, WORK_EXIT[e.kind]);
+      throw e;
+    }
+  };
+
+  withJson(
+    companyOption(
+      program
+        .command("take-back")
+        .description("take a task back from the external/manual agent holding it (re-queued, no attempt counted)")
+        .argument("<taskId>")
+        .action((taskId: string, opts) => {
+          const co = openCompany(ctx, opts.company);
+          const holder = co.loadTask(taskId).lease?.holder;
+          const t = guard(() => ownerRelease(co, taskId));
+          out({ ok: true, taskId, status: t.status, from: holder }, () =>
+            console.log(c.green(`${taskId} taken back from ${holder} — queued again`))
+          );
+        })
+    )
+  );
+
+  withJson(
+    companyOption(
+      program
+        .command("report")
+        .description("enter the result for an external/manual agent's task, e.g. an answer pasted from a chat")
+        .argument("<taskId>")
+        .option("--result <text>", "the result")
+        .option("--result-file <path>", "read the result from a file ('-' = stdin)")
+        .option("--failed", "record a failed attempt instead (the text is the reason)")
+        .action((taskId: string, opts) => {
+          const co = openCompany(ctx, opts.company);
+          const result = opts.resultFile ? fs.readFileSync(opts.resultFile === "-" ? 0 : opts.resultFile, "utf8") : opts.result;
+          if (!result?.trim()) fail("give --result or --result-file", WORK_EXIT.input);
+          const t = guard(() => ownerReport(co, taskId, String(result).trim(), !!opts.failed));
+          out({ ok: true, taskId, status: t.status, agent: t.assignee }, () =>
+            console.log(
+              t.status === "done"
+                ? c.green(`${taskId} done (reported for ${t.assignee})`)
+                : t.status === "failed"
+                  ? c.red(`${taskId} failed`)
+                  : c.yellow(`${taskId} ${t.status} (attempt ${t.attempts ?? 0})`)
+            )
           );
         })
     )

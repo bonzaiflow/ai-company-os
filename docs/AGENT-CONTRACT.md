@@ -202,6 +202,8 @@ ai-company-os set-runtime Chief    -c SLUG --runtime external --adapter ""      
 - **Dashboard**: org cards show `external · pull`, `push · <adapter>` or `manual`. A held task
   shows holder, lease and last heartbeat with **Take back**; tasks of external/manual agents have
   **Enter the result** (paste a chat's answer) with Mark done / Mark failed.
+- **CLI**: `queue` / `agent <Name>` show holder and lease time left; `take-back <id>` and
+  `report <id> --result "…" | --result-file - [--failed]` do the same as the two dashboard buttons.
 - **Review**: with `approveResults`, `done` files an approval (`owner.review`) — `approve` finishes
   the task, `deny -n "…"` sends it back with the note in the agent's inbox.
 - **Telegram**: with the Telegram connector, each new ready task of a manual agent is announced once.

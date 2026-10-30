@@ -2,6 +2,7 @@
  * workers, workers use sqlite/filesystem tools, chief synthesizes. No model
  * needed. Run with: npm run smoke */
 import assert from "node:assert";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -182,6 +183,34 @@ ext.saveTask(held.task);
 assert.deepEqual(expireLeases(ext), [late.id], "expired lease is reclaimed");
 assert.equal(ext.loadTask(late.id).status, "queued", "expired task requeued as a retry");
 assert.equal(ext.verifyAudit(), null, "audit chain intact");
+
+// owner side over the CLI: see the lease, take the task back, enter the result
+const cliJs = path.resolve(fileURLToPath(import.meta.url), "../cli.js");
+const cli = (...args: string[]) => {
+  const r = spawnSync(process.execPath, [cliJs, ...args, "-c", "external-co"], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, NO_COLOR: "1", NODE_NO_WARNINGS: "1" },
+  });
+  return { code: r.status, out: r.stdout + r.stderr };
+};
+const again = claimNext(ext, "Human", "manual")!;
+assert.equal(again.task.id, late.id);
+assert.match(cli("queue").out, new RegExp(`${late.id}.*held by Human \\(manual\\)`), "queue shows the lease holder");
+assert.match(cli("agent", "Human").out, new RegExp(`holding ${late.id}`), "agent view shows the held task");
+const tb = cli("take-back", late.id);
+assert.equal(tb.code, 0, tb.out);
+assert.equal(ext.loadTask(late.id).status, "queued", "take-back re-queues");
+assert.equal(ext.loadTask(late.id).lease, undefined, "take-back drops the lease");
+assert.equal(cli("take-back", late.id).code, 4, "take-back on an unheld task is a lease error");
+const pasted = ext.createTask({ title: "Pasted", description: "x", assignee: "Human", createdBy: "user" });
+ext.enqueue(pasted.id);
+const rep = cli("report", pasted.id, "--result", "answer pasted from a chat");
+assert.equal(rep.code, 0, rep.out);
+assert.equal(ext.loadTask(pasted.id).status, "done", "owner report completes a queued manual task");
+assert.match(ext.loadTask(pasted.id).result ?? "", /pasted from a chat/);
+assert.equal(cli("report", pasted.id, "--result", "again").code, 2, "report on a finished task is refused");
+assert.equal(cli("report", lead.task.id, "--result", "x", "--failed").code, 2, "finished tasks stay finished");
 
 // ---- remote work API: token auth, ownership, MCP over HTTP ----
 const remoteAgent = ext.loadAgent("Human");

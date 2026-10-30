@@ -50,6 +50,15 @@ ai-company-os --json work message|inbox -c acme --as Chief …
 
 `AI_COMPANY_OS_ROOT` makes every command work from any directory.
 
+Owner side (the CLI twin of the dashboard's "Take back" / "Enter the result"): `queue` and `agent <Name>` show who holds a task and how long the lease has left.
+
+```bash
+ai-company-os take-back TASK-0042 -c acme                       # re-queue a held task, no attempt counted
+ai-company-os report TASK-0042 -c acme --result "…"             # enter the result for an external/manual agent
+pbpaste | ai-company-os report TASK-0042 -c acme --result-file -   # e.g. an answer copied from a chat
+ai-company-os report TASK-0042 -c acme --failed --result "why"  # record a failed attempt instead
+```
+
 Costs and templates: `ai-company-os budget [--add N] [--monthly N]` shows tokens and lease minutes per agent (this month / total) and sets a monthly cap; `ai-company-os templates` / `ai-company-os launch mixed-lead-company` starts the mixed-runtime example company.
 
 Remote agents (other machines, cloud, chat connectors): `ai-company-os agent-token <Name> --write-env` and `ai-company-os serve-agents [--port 4848] [--host 127.0.0.1] [--trust-proxy]` — HTTP + remote MCP for the work contract only, token required.
@@ -108,6 +117,8 @@ Workspace path for the CLI is **cwd** (unlike the UI’s persisted workspace pic
 | `tick` / `run` | Tick / Run loop |
 | `retry [id]` / `retry --all-failed` | task retry |
 | `priority <id>` | raise task (+ blockers) |
+| `take-back <id>` | task modal → Take back |
+| `report <id> --result …` | task modal → Enter the result |
 | `flush --yes` | clear queued/waiting |
 | `pause` / `resume` | pause button |
 | `schedule --every 30 --ticks 5` | schedule panel |
